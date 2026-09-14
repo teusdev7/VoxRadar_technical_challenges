@@ -2,7 +2,13 @@ import argparse
 import json
 import logging
 from pathlib import Path
+from time import time
+from urllib.parse import parse_qs, unquote, urlparse
 
+from kwai_collector.clients.comment_client import (
+    KwaiCommentsError,
+    get_tiny_comments,
+)
 from kwai_collector.clients.kwai_client import search_all_posts
 from kwai_collector.clients.profile_client import get_all_profile_posts
 from kwai_collector.config import settings
@@ -46,6 +52,137 @@ def numero_nao_negativo(value: str) -> float:
     return numero
 
 
+def extrair_photo_id(valor: str) -> str:
+    """
+    Extrai o photo_id de uma URL do Kwai.
+
+    Também aceita o photo_id diretamente.
+    """
+
+    valor = valor.strip()
+
+    # Permite passar somente o ID.
+    if valor.isdigit():
+        return valor
+
+    parsed = urlparse(valor)
+
+    # ---------------------------------------------------------
+    # Tenta obter pelo query parameter.
+    #
+    # Exemplo:
+    # ?photoId=5253599077813406650
+    # ---------------------------------------------------------
+    query = parse_qs(parsed.query)
+
+    for chave in ("photoId", "photo_id"):
+        valores = query.get(chave)
+
+        if valores:
+            photo_id = valores[0].strip()
+
+            if photo_id.isdigit():
+                return photo_id
+
+    # ---------------------------------------------------------
+    # Tenta obter pelo caminho da URL.
+    #
+    # Exemplo:
+    # /photo/150001691804174/5253599077813406650
+    # ---------------------------------------------------------
+    partes = [
+        unquote(parte)
+        for parte in parsed.path.split("/")
+        if parte
+    ]
+
+    for marcador in ("photo", "video"):
+        if marcador not in partes:
+            continue
+
+        indice = partes.index(marcador)
+
+        candidatos = partes[indice + 1 :]
+
+        # No formato /photo/user_id/photo_id,
+        # o photo_id normalmente é o último número.
+        for candidato in reversed(candidatos):
+            if candidato.isdigit():
+                return candidato
+
+    raise ValueError(
+        "Não foi possível encontrar um photo_id válido "
+        "na URL informada."
+    )
+
+
+def montar_tiny_query_params() -> dict[str, str]:
+    """
+    Monta os parâmetros necessários para a Tiny API.
+
+    Estes valores correspondem ao ambiente que validamos
+    durante os testes do endpoint de comentários.
+    """
+
+    timestamp = str(int(time() * 1000))
+
+    return {
+        "ver": "13.7",
+        "appver": "13.7.50.646302",
+        "pkg": "com.kwai.video",
+        "c": "GOOGLE_PLAY",
+        "app": "1",
+        "os": "android",
+        "client_key": "3c2cd3f3",
+        "kpn": "KWAI",
+        "kpf": "ANDROID_PHONE",
+        "kwai_tiny_type": "2",
+        "sys": "KWAI_ANDROID_14",
+        "mod": "samsung(SM-A356E)",
+        "net": "WIFI",
+        "language": "pt-br",
+        "country_code": "br",
+        "mcc": "724",
+        "time_zone": (
+            "Brasilia Standard Time "
+            "America/Sao_Paulo"
+        ),
+        "ds": "-1",
+        "egid": "",
+        "abi": "arm64-v8a",
+        "timestamp": timestamp,
+    }
+
+
+def salvar_json(
+    dados: object,
+    arquivo_saida: Path,
+) -> None:
+    """
+    Salva um objeto serializável em JSON.
+    """
+
+    arquivo_saida.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    with arquivo_saida.open(
+        "w",
+        encoding="utf-8",
+    ) as arquivo:
+        json.dump(
+            dados,
+            arquivo,
+            ensure_ascii=False,
+            indent=2,
+        )
+
+
+# ============================================================
+# PARSER PRINCIPAL
+# ============================================================
+
 parser = argparse.ArgumentParser(
     description="Coletor de dados do Kwai",
 )
@@ -55,6 +192,10 @@ subparsers = parser.add_subparsers(
     required=True,
 )
 
+
+# ============================================================
+# BUSCAR
+# ============================================================
 
 buscar_parser = subparsers.add_parser(
     "buscar",
@@ -77,7 +218,7 @@ buscar_parser.add_argument(
     "--output",
     type=Path,
     default=Path("samples/busca_cli.json"),
-    help="Caminho do arquivo de saída para salvar os resultados",
+    help="Caminho do arquivo de saída",
 )
 
 buscar_parser.add_argument(
@@ -88,6 +229,54 @@ buscar_parser.add_argument(
 )
 
 
+# ============================================================
+# COMMENTS
+#
+# NOVO FLUXO:
+# link -> photo_id -> Tiny API -> até 20 comentários
+#
+# Não depende do celular conectado.
+# ============================================================
+
+comments_parser = subparsers.add_parser(
+    "comments",
+    help=(
+        "Coletar até 20 comentários de uma postagem "
+        "usando a Tiny API"
+    ),
+)
+
+comments_parser.add_argument(
+    "url",
+    help=(
+        "URL da postagem do Kwai ou um photo_id "
+        "numérico"
+    ),
+)
+
+comments_parser.add_argument(
+    "--output",
+    type=Path,
+    default=Path("samples/comentarios_tiny.json"),
+    help="Arquivo JSON de saída",
+)
+
+comments_parser.add_argument(
+    "--debug",
+    action="store_true",
+    help="Exibir detalhes da requisição HTTP",
+)
+
+
+# ============================================================
+# COMENTARIOS
+#
+# FLUXO ANTIGO:
+# ADB / XML / JSON mobile
+#
+# Mantido para não quebrar funcionalidades anteriores.
+# ============================================================
+
 comentarios_parser = subparsers.add_parser(
     "comentarios",
     help="Extrair comentários de uma postagem do Kwai",
@@ -95,7 +284,7 @@ comentarios_parser = subparsers.add_parser(
 
 comentarios_parser.add_argument(
     "url",
-    help="URL da postagem do Kwai para extrair comentários",
+    help="URL da postagem do Kwai",
 )
 
 comentarios_source = comentarios_parser.add_mutually_exclusive_group()
@@ -116,9 +305,13 @@ comentarios_parser.add_argument(
     "--output",
     type=Path,
     default=Path("samples/comentarios_cli.json"),
-    help="Caminho do arquivo de saída para salvar os comentários extraídos",
+    help="Arquivo JSON de saída",
 )
 
+
+# ============================================================
+# PERFIL
+# ============================================================
 
 perfil_parser = subparsers.add_parser(
     "perfil",
@@ -152,11 +345,20 @@ perfil_parser.add_argument(
 )
 
 
+# ============================================================
+# MAIN
+# ============================================================
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
+    # ========================================================
+    # BUSCAR
+    # ========================================================
+
     if args.comando == "buscar":
-        posts = search_all_posts(
+        posts_busca = search_all_posts(
             args.keyword,
             max_paginas=args.paginas,
             delay=args.delay,
@@ -164,46 +366,130 @@ def main(argv: list[str] | None = None) -> int:
 
         logger.info(
             "Total de posts encontrados: %d",
-            len(posts),
+            len(posts_busca),
         )
 
-        resultados = []
+        postagens_busca = []
 
-        for post in posts:
+        for post in posts_busca:
             postagem = parse_post(post)
-            resultados.append(postagem)
 
-        dados_saida = [
+            postagens_busca.append(
+                postagem
+            )
+
+        dados_busca = [
             postagem.model_dump(mode="json")
-            for postagem in resultados
+            for postagem in postagens_busca
         ]
 
-        arquivo_saida = args.output
+        arquivo_busca = args.output
 
-        arquivo_saida.parent.mkdir(
-            parents=True,
-            exist_ok=True,
+        salvar_json(
+            dados_busca,
+            arquivo_busca,
         )
-
-        with arquivo_saida.open(
-            "w",
-            encoding="utf-8",
-        ) as arquivo:
-            json.dump(
-                dados_saida,
-                arquivo,
-                ensure_ascii=False,
-                indent=2,
-            )
 
         logger.info(
             "Resultados gerados em: %s",
-            arquivo_saida,
+            arquivo_busca,
         )
 
         logger.info(
             "Execução concluída com sucesso.",
         )
+
+    # ========================================================
+    # COMMENTS - TINY API
+    # ========================================================
+
+    elif args.comando == "comments":
+        try:
+            photo_id = extrair_photo_id(
+                args.url,
+            )
+
+        except ValueError as exc:
+            logger.error(
+                "%s",
+                exc,
+            )
+
+            return 1
+
+        logger.info(
+            "Photo ID identificado: %s",
+            photo_id,
+        )
+
+        tiny_query_params = montar_tiny_query_params()
+
+        try:
+            comentarios_tiny = get_tiny_comments(
+                photo_id=photo_id,
+                query_params=tiny_query_params,
+                debug=args.debug,
+            )
+
+        except KwaiCommentsError as exc:
+            logger.error(
+                "Falha ao coletar comentários: %s",
+                exc,
+            )
+
+            return 1
+
+        dados_tiny: list[dict[str, object]] = [
+            dict(comentario)
+            for comentario in comentarios_tiny
+        ]
+
+        arquivo_tiny = args.output
+
+        salvar_json(
+            dados_tiny,
+            arquivo_tiny,
+        )
+
+        logger.info(
+            "Total de comentários extraídos: %d",
+            len(dados_tiny),
+        )
+
+        # Mostra os comentários no terminal.
+        for indice, comentario in enumerate(
+            dados_tiny,
+            start=1,
+        ):
+            usuario = comentario.get(
+                "userName",
+                "Usuário desconhecido",
+            )
+
+            conteudo = comentario.get(
+                "content",
+                "",
+            )
+
+            logger.info(
+                "%02d. %s: %s",
+                indice,
+                usuario,
+                conteudo,
+            )
+
+        logger.info(
+            "Resultados gerados em: %s",
+            arquivo_tiny,
+        )
+
+        logger.info(
+            "Execução concluída com sucesso.",
+        )
+
+    # ========================================================
+    # COMENTARIOS - FLUXO ANTIGO
+    # ========================================================
 
     elif args.comando == "comentarios":
         provider: CommentProvider
@@ -221,91 +507,76 @@ def main(argv: list[str] | None = None) -> int:
         else:
             provider = AdbCommentProvider()
 
-        comentarios = provider.get_comments(
+        comentarios_legados = provider.get_comments(
             postagem_url=args.url,
         )
 
-        dados_saida = [
+        dados_comentarios = [
             comentario.model_dump(mode="json")
-            for comentario in comentarios
+            for comentario in comentarios_legados
         ]
 
-        arquivo_saida = args.output
+        arquivo_comentarios = args.output
 
-        arquivo_saida.parent.mkdir(
-            parents=True,
-            exist_ok=True,
+        salvar_json(
+            dados_comentarios,
+            arquivo_comentarios,
         )
-
-        with arquivo_saida.open(
-            "w",
-            encoding="utf-8",
-        ) as arquivo:
-            json.dump(
-                dados_saida,
-                arquivo,
-                ensure_ascii=False,
-                indent=2,
-            )
 
         logger.info(
             "Total de comentários extraídos: %d",
-            len(comentarios),
+            len(comentarios_legados),
         )
 
         logger.info(
             "Resultados gerados em: %s",
-            arquivo_saida,
+            arquivo_comentarios,
         )
 
         logger.info(
             "Execução concluída com sucesso.",
         )
 
+    # ========================================================
+    # PERFIL
+    # ========================================================
+
     elif args.comando == "perfil":
-        posts = get_all_profile_posts(
+        posts_perfil = get_all_profile_posts(
             user_id=args.usuario,
             max_paginas=args.paginas,
             delay=args.delay,
         )
 
-        resultados = []
+        postagens_perfil = []
 
-        for post in posts:
+        for post in posts_perfil:
             postagem = parse_post(post)
-            resultados.append(postagem)
 
-        dados_saida = [
+            postagens_perfil.append(
+                postagem
+            )
+
+        dados_perfil = [
             postagem.model_dump(mode="json")
-            for postagem in resultados
+            for postagem in postagens_perfil
         ]
 
-        arquivo_saida = args.output
+        arquivo_perfil = args.output
 
-        arquivo_saida.parent.mkdir(
-            parents=True,
-            exist_ok=True,
+        salvar_json(
+            dados_perfil,
+            arquivo_perfil,
         )
-
-        with arquivo_saida.open(
-            "w",
-            encoding="utf-8",
-        ) as arquivo:
-            json.dump(
-                dados_saida,
-                arquivo,
-                ensure_ascii=False,
-                indent=2,
-            )
 
         logger.info(
             "Total de posts do perfil encontrados: %d",
-            len(resultados),
+            len(postagens_perfil),
         )
 
         logger.info(
             "Resultados gerados em: %s",
-            arquivo_saida,
+            arquivo_perfil,
         )
 
         logger.info(
