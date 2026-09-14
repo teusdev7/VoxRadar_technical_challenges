@@ -3,7 +3,7 @@ name = "kwai-collector"
 version = "0.1.0"
 description = "Coletor de dados do Kwai"
 authors = [
-    {name = "Tiuteus007-gif",email = "209494330+teusdev7@users.noreply.github.com"}
+    {name = "Tiuteus007-gif", email = "209494330+teusdev7@users.noreply.github.com"}
 ]
 requires-python = ">=3.11,<4.0"
 dependencies = [
@@ -12,6 +12,8 @@ dependencies = [
     "pydantic-settings (>=2.15.0,<3.0.0)"
 ]
 
+[project.scripts]
+kwai-collector = "kwai_collector.cli:main"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
