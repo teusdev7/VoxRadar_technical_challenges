@@ -2,6 +2,12 @@ import json
 
 from kwai_collector import cli
 from kwai_collector.cli import main
+from kwai_collector.parsers.comment_parser import (
+    parse_comment as parse_comment_real,
+)
+from kwai_collector.parsers.post_parser import (
+    parse_post as parse_post_real,
+)
 
 
 def criar_post(
@@ -267,3 +273,302 @@ def test_cli_sem_posts_retorna_erro(
     )
 
     assert codigo == 1
+
+
+def test_cli_buscar_posts_por_palavra_chave(
+    monkeypatch,
+    tmp_path,
+):
+    posts = [
+        criar_post(1),
+        criar_post(2),
+    ]
+
+    chamadas: list[str] = []
+
+    def fake_search_all_posts(
+        keyword,
+        **kwargs,
+    ):
+        chamadas.append(keyword)
+        return posts
+
+    monkeypatch.setattr(
+        cli,
+        "search_all_posts",
+        fake_search_all_posts,
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "parse_post",
+        parse_post_real,
+        raising=False,
+    )
+
+    codigo = main(
+        [
+            "buscar",
+            "tecnologia",
+            "--output-dir",
+            str(tmp_path),
+        ]
+    )
+
+    assert codigo == 0
+    assert chamadas == ["tecnologia"]
+
+    arquivo_saida = (
+        tmp_path
+        / "busca_tecnologia.json"
+    )
+
+    assert arquivo_saida.exists()
+
+    dados = json.loads(
+        arquivo_saida.read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert isinstance(
+        dados,
+        list,
+    )
+
+    assert len(dados) == 2
+
+    assert (
+        dados[0]["id"]
+        == posts[0]["photo_id_str"]
+    )
+
+    assert (
+        dados[0]["texto"]
+        == "Post 1"
+    )
+
+    assert (
+        dados[0]["autor"]["usuario"]
+        == "Perfil Teste"
+    )
+
+    assert (
+        dados[0]["engajamento"]["curtidas"]
+        == 101
+    )
+
+
+def test_cli_perfil_coleta_posts_normalizados(
+    monkeypatch,
+    tmp_path,
+):
+    posts = [
+        criar_post(1),
+        criar_post(2),
+        criar_post(3),
+    ]
+
+    usuarios_consultados: list[str] = []
+
+    def fake_get_all_profile_posts(
+        user_id,
+        **kwargs,
+    ):
+        usuarios_consultados.append(
+            user_id
+        )
+
+        return posts
+
+    monkeypatch.setattr(
+        cli,
+        "get_all_profile_posts",
+        fake_get_all_profile_posts,
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "parse_post",
+        parse_post_real,
+        raising=False,
+    )
+
+    codigo = main(
+        [
+            "perfil",
+            "@perfil_teste",
+            "--output-dir",
+            str(tmp_path),
+        ]
+    )
+
+    assert codigo == 0
+
+    assert usuarios_consultados == [
+        "@perfil_teste"
+    ]
+
+    arquivo_saida = (
+        tmp_path
+        / "perfil_teste_posts.json"
+    )
+
+    assert arquivo_saida.exists()
+
+    dados = json.loads(
+        arquivo_saida.read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert isinstance(
+        dados,
+        list,
+    )
+
+    assert len(dados) == 3
+
+    assert (
+        dados[0]["id"]
+        == posts[0]["photo_id_str"]
+    )
+
+    assert dados[0]["url"].endswith(
+        str(posts[0]["photo_id_str"])
+    )
+
+    assert (
+        dados[0]["autor"]["id"]
+        == "123456"
+    )
+
+    assert (
+        dados[0]["engajamento"]["comentarios"]
+        == 30
+    )
+
+
+def test_cli_comentarios_coleta_e_normaliza(
+    monkeypatch,
+    tmp_path,
+):
+    photo_id = "5253599077813406650"
+
+    postagem_url = (
+        "https://www.kwai.com/"
+        "@perfil_teste/video/"
+        f"{photo_id}"
+    )
+
+    comentarios_brutos = [
+        {
+            "commentId": "1001",
+            "userName": "Usuario Um",
+            "userId": "5001",
+            "kwaiid": "usuario_um",
+            "content": "Primeiro comentário",
+            "commentLikeCount": 10,
+            "commentTime": (
+                "2026-09-14T12:00:00Z"
+            ),
+        },
+        {
+            "commentId": "1002",
+            "userName": "Usuario Dois",
+            "userId": "5002",
+            "kwaiid": "usuario_dois",
+            "content": "Segundo comentário",
+            "commentLikeCount": 20,
+            "commentTime": (
+                "2026-09-14T13:00:00Z"
+            ),
+        },
+    ]
+
+    photo_ids_consultados: list[str] = []
+
+    def fake_get_tiny_comments(
+        photo_id,
+        query_params=None,
+        debug=False,
+    ):
+        photo_ids_consultados.append(
+            photo_id
+        )
+
+        return comentarios_brutos
+
+    monkeypatch.setattr(
+        cli,
+        "get_tiny_comments",
+        fake_get_tiny_comments,
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "parse_comment",
+        parse_comment_real,
+        raising=False,
+    )
+
+    codigo = main(
+        [
+            "comentarios",
+            postagem_url,
+            "--output-dir",
+            str(tmp_path),
+        ]
+    )
+
+    assert codigo == 0
+
+    assert photo_ids_consultados == [
+        photo_id
+    ]
+
+    arquivo_saida = (
+        tmp_path
+        / f"{photo_id}_comentarios.json"
+    )
+
+    assert arquivo_saida.exists()
+
+    dados = json.loads(
+        arquivo_saida.read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert isinstance(
+        dados,
+        list,
+    )
+
+    assert len(dados) == 2
+
+    assert (
+        dados[0]["id"]
+        == "1001"
+    )
+
+    assert (
+        dados[0]["postagem_url"]
+        == postagem_url
+    )
+
+    assert (
+        dados[0]["autor"]["usuario"]
+        == "Usuario Um"
+    )
+
+    assert (
+        dados[0]["texto"]
+        == "Primeiro comentário"
+    )
+
+    assert (
+        dados[0]["curtidas"]
+        == 10
+    )

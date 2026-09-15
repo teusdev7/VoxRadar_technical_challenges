@@ -2,15 +2,20 @@ import argparse
 import json
 import logging
 import re
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from time import sleep, time
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
 from kwai_collector.clients.comment_client import (
     KwaiCommentsError,
+)
+from kwai_collector.clients.kwai_client import (
+    search_all_posts,
 )
 from kwai_collector.clients.post_detail_client import (
     KwaiPostError,
@@ -23,6 +28,12 @@ from kwai_collector.clients.tiny_comment_client import (
     get_tiny_comments,
 )
 from kwai_collector.config import settings
+from kwai_collector.parsers.comment_parser import (
+    parse_comment,
+)
+from kwai_collector.parsers.post_parser import (
+    parse_post,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -85,17 +96,17 @@ def limpar_usuario(
 
 
 def nome_arquivo_seguro(
-    usuario: str,
+    valor: str,
 ) -> str:
     nome = re.sub(
         r"[^A-Za-z0-9._-]+",
         "_",
-        usuario,
+        valor,
     )
 
     return nome.strip(
         "._-"
-    ) or "perfil"
+    ) or "resultado"
 
 
 def montar_tiny_query_params() -> dict[str, str]:
@@ -320,62 +331,342 @@ def montar_post_fallback(
     }
 
 
-parser = argparse.ArgumentParser(
-    description=(
-        "Coleta os 10 primeiros posts públicos "
-        "de um perfil do Kwai e até 20 comentários "
-        "por postagem."
-    ),
-)
+def extrair_photo_id(
+    valor: str,
+) -> str:
+    valor = valor.strip()
 
-parser.add_argument(
-    "perfil",
-    help=(
-        "Perfil do Kwai. "
-        "Exemplo: @ftvfilmeseseri645"
-    ),
-)
+    if valor.isdigit():
+        return valor
 
-parser.add_argument(
-    "--output-dir",
-    type=Path,
-    default=Path("samples"),
-    help=(
-        "Diretório onde os arquivos JSON "
-        "serão salvos"
-    ),
-)
+    parsed = urlparse(
+        valor
+    )
 
-parser.add_argument(
-    "--delay",
-    type=numero_nao_negativo,
-    default=settings.delay,
-    help=(
-        "Intervalo em segundos entre "
-        "o processamento dos posts"
-    ),
-)
+    partes = [
+        parte
+        for parte in parsed.path.split("/")
+        if parte
+    ]
 
-parser.add_argument(
-    "--debug",
-    action="store_true",
-    help=(
-        "Exibir informações adicionais "
-        "das requisições de comentários"
-    ),
-)
+    ids_numericos = [
+        parte
+        for parte in partes
+        if parte.isdigit()
+    ]
+
+    if ids_numericos:
+        return ids_numericos[-1]
+
+    raise ValueError(
+        "Não foi possível identificar o photo_id "
+        "na URL informada."
+    )
 
 
-def main(
-    argv: list[str] | None = None,
+def normalizar_posts(
+    posts: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    resultados: list[
+        dict[str, Any]
+    ] = []
+
+    for post in posts:
+        try:
+            postagem = parse_post(
+                post
+            )
+
+        except ValueError as exc:
+            logger.warning(
+                "Post ignorado por não atender "
+                "ao schema: %s",
+                exc,
+            )
+            continue
+
+        resultados.append(
+            postagem.model_dump(
+                mode="json"
+            )
+        )
+
+    return resultados
+
+
+def normalizar_comentarios(
+    comentarios: list[dict[str, Any]],
+    postagem_url: str,
+) -> list[dict[str, Any]]:
+    resultados: list[
+        dict[str, Any]
+    ] = []
+
+    for comentario in comentarios:
+        try:
+            comentario_modelo = (
+                parse_comment(
+                    comentario,
+                    postagem_url,
+                )
+            )
+
+        except ValueError as exc:
+            logger.warning(
+                "Comentário ignorado por não "
+                "atender ao schema: %s",
+                exc,
+            )
+            continue
+
+        resultados.append(
+            comentario_modelo.model_dump(
+                mode="json"
+            )
+        )
+
+    return resultados
+
+
+def executar_busca(
+    palavra: str,
+    output_dir: Path,
+    delay: float,
 ) -> int:
-    args = parser.parse_args(
-        argv
+    palavra = palavra.strip()
+
+    if not palavra:
+        logger.error(
+            "Informe uma palavra-chave válida."
+        )
+        return 1
+
+    logger.info(
+        "Buscando posts por: %s",
+        palavra,
     )
 
     try:
+        posts_brutos = search_all_posts(
+            palavra,
+            delay=delay,
+        )
+
+    except (
+        httpx.RequestError,
+        httpx.HTTPStatusError,
+        RuntimeError,
+    ) as exc:
+        logger.error(
+            "Falha ao buscar posts: %s",
+            exc,
+        )
+        return 1
+
+    posts = normalizar_posts(
+        posts_brutos
+    )
+
+    nome = nome_arquivo_seguro(
+        palavra
+    )
+
+    arquivo_saida = (
+        output_dir
+        / f"busca_{nome}.json"
+    )
+
+    salvar_json(
+        posts,
+        arquivo_saida,
+    )
+
+    logger.info(
+        "Busca concluída."
+    )
+
+    logger.info(
+        "Posts coletados: %d",
+        len(posts),
+    )
+
+    logger.info(
+        "Arquivo salvo em: %s",
+        arquivo_saida,
+    )
+
+    return 0
+
+
+def executar_perfil(
+    perfil_informado: str,
+    output_dir: Path,
+    delay: float,
+) -> int:
+    try:
         usuario = limpar_usuario(
-            args.perfil
+            perfil_informado
+        )
+
+    except ValueError as exc:
+        logger.error(
+            "%s",
+            exc,
+        )
+        return 1
+
+    usuario_consulta = (
+        f"@{usuario}"
+    )
+
+    logger.info(
+        "Coletando posts do perfil: %s",
+        usuario_consulta,
+    )
+
+    try:
+        posts_brutos = (
+            get_all_profile_posts(
+                user_id=usuario_consulta,
+                delay=delay,
+            )
+        )
+
+    except (
+        httpx.RequestError,
+        httpx.HTTPStatusError,
+        RuntimeError,
+    ) as exc:
+        logger.error(
+            "Falha ao coletar o perfil: %s",
+            exc,
+        )
+        return 1
+
+    if not posts_brutos:
+        logger.error(
+            "Nenhuma postagem encontrada "
+            "para o perfil %s.",
+            usuario_consulta,
+        )
+        return 1
+
+    posts = normalizar_posts(
+        posts_brutos
+    )
+
+    arquivo_saida = (
+        output_dir
+        / f"{nome_arquivo_seguro(usuario)}_posts.json"
+    )
+
+    salvar_json(
+        posts,
+        arquivo_saida,
+    )
+
+    logger.info(
+        "Coleta do perfil concluída."
+    )
+
+    logger.info(
+        "Posts coletados: %d",
+        len(posts),
+    )
+
+    logger.info(
+        "Arquivo salvo em: %s",
+        arquivo_saida,
+    )
+
+    return 0
+
+
+def executar_comentarios(
+    postagem_url: str,
+    output_dir: Path,
+    debug: bool,
+) -> int:
+    try:
+        photo_id = extrair_photo_id(
+            postagem_url
+        )
+
+    except ValueError as exc:
+        logger.error(
+            "%s",
+            exc,
+        )
+        return 1
+
+    logger.info(
+        "Coletando comentários do post %s",
+        photo_id,
+    )
+
+    try:
+        parametros = (
+            montar_tiny_query_params()
+        )
+
+        comentarios_brutos = (
+            get_tiny_comments(
+                photo_id=photo_id,
+                query_params=parametros,
+                debug=debug,
+            )
+        )
+
+    except KwaiCommentsError as exc:
+        logger.error(
+            "Falha ao coletar comentários: %s",
+            exc,
+        )
+        return 1
+
+    comentarios = (
+        normalizar_comentarios(
+            comentarios_brutos,
+            postagem_url,
+        )
+    )
+
+    arquivo_saida = (
+        output_dir
+        / f"{photo_id}_comentarios.json"
+    )
+
+    salvar_json(
+        comentarios,
+        arquivo_saida,
+    )
+
+    logger.info(
+        "Coleta de comentários concluída."
+    )
+
+    logger.info(
+        "Comentários coletados: %d",
+        len(comentarios),
+    )
+
+    logger.info(
+        "Arquivo salvo em: %s",
+        arquivo_saida,
+    )
+
+    return 0
+
+
+def executar_coleta_agregada(
+    perfil_informado: str,
+    output_dir: Path,
+    delay: float,
+    debug: bool,
+) -> int:
+    try:
+        usuario = limpar_usuario(
+            perfil_informado
         )
 
     except ValueError as exc:
@@ -543,7 +834,7 @@ def main(
                 get_tiny_comments(
                     photo_id=photo_id,
                     query_params=parametros,
-                    debug=args.debug,
+                    debug=debug,
                 )
             )
 
@@ -608,10 +899,10 @@ def main(
         if (
             indice
             < len(posts_selecionados)
-            and args.delay > 0
+            and delay > 0
         ):
             sleep(
-                args.delay
+                delay
             )
 
     coletado_em = datetime.now(
@@ -649,12 +940,12 @@ def main(
     )
 
     arquivo_posts = (
-        args.output_dir
+        output_dir
         / f"{nome_base}_posts.json"
     )
 
     arquivo_comentarios = (
-        args.output_dir
+        output_dir
         / f"{nome_base}_comentarios.json"
     )
 
@@ -708,6 +999,301 @@ def main(
     )
 
     return 0
+
+
+def criar_parser_legado() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="kwai-collector",
+        description=(
+            "Coleta os 10 primeiros posts públicos "
+            "de um perfil do Kwai e até 20 comentários "
+            "por postagem."
+        ),
+    )
+
+    parser.add_argument(
+        "perfil",
+        help=(
+            "Perfil do Kwai. "
+            "Exemplo: @ftvfilmeseseri645"
+        ),
+    )
+
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("samples"),
+        help=(
+            "Diretório onde os arquivos JSON "
+            "serão salvos"
+        ),
+    )
+
+    parser.add_argument(
+        "--delay",
+        type=numero_nao_negativo,
+        default=settings.delay,
+        help=(
+            "Intervalo em segundos entre "
+            "o processamento dos posts"
+        ),
+    )
+
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help=(
+            "Exibir informações adicionais "
+            "das requisições de comentários"
+        ),
+    )
+
+    return parser
+
+
+def criar_parser_buscar() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="kwai-collector buscar",
+        description=(
+            "Busca postagens públicas do Kwai "
+            "por palavra-chave."
+        ),
+    )
+
+    parser.add_argument(
+        "palavra",
+        help="Palavra-chave da busca.",
+    )
+
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("samples"),
+    )
+
+    parser.add_argument(
+        "--delay",
+        type=numero_nao_negativo,
+        default=settings.delay,
+    )
+
+    return parser
+
+
+def criar_parser_perfil() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="kwai-collector perfil",
+        description=(
+            "Coleta postagens públicas "
+            "de um perfil do Kwai."
+        ),
+    )
+
+    parser.add_argument(
+        "perfil",
+        help=(
+            "Perfil do Kwai. "
+            "Exemplo: @usuario"
+        ),
+    )
+
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("samples"),
+    )
+
+    parser.add_argument(
+        "--delay",
+        type=numero_nao_negativo,
+        default=settings.delay,
+    )
+
+    return parser
+
+
+def criar_parser_comentarios() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="kwai-collector comentarios",
+        description=(
+            "Coleta comentários públicos "
+            "de uma postagem do Kwai."
+        ),
+    )
+
+    parser.add_argument(
+        "postagem",
+        help=(
+            "URL da postagem ou photo_id."
+        ),
+    )
+
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("samples"),
+    )
+
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+    )
+
+    return parser
+
+
+def criar_parser_coletar() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="kwai-collector coletar",
+        description=(
+            "Coleta os 10 primeiros posts "
+            "de um perfil e até 20 comentários "
+            "por postagem."
+        ),
+    )
+
+    parser.add_argument(
+        "perfil",
+        help=(
+            "Perfil do Kwai. "
+            "Exemplo: @usuario"
+        ),
+    )
+
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("samples"),
+    )
+
+    parser.add_argument(
+        "--delay",
+        type=numero_nao_negativo,
+        default=settings.delay,
+    )
+
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+    )
+
+    return parser
+
+
+def mostrar_ajuda_principal() -> None:
+    mensagem = """
+Uso:
+  kwai-collector buscar <palavra>
+  kwai-collector perfil <@usuario>
+  kwai-collector comentarios <url-do-post>
+  kwai-collector coletar <@usuario>
+
+Compatibilidade:
+  kwai-collector <@usuario>
+
+Comandos:
+  buscar        Busca posts por palavra-chave.
+  perfil        Coleta posts públicos de um perfil.
+  comentarios   Coleta comentários de uma postagem.
+  coletar       Coleta 10 posts e até 20 comentários por post.
+
+Use:
+  kwai-collector <comando> --help
+para ver as opções de cada comando.
+""".strip()
+
+    print(
+        mensagem
+    )
+
+
+def main(
+    argv: list[str] | None = None,
+) -> int:
+    argumentos = (
+        list(sys.argv[1:])
+        if argv is None
+        else list(argv)
+    )
+
+    if not argumentos:
+        mostrar_ajuda_principal()
+        return 1
+
+    primeiro = argumentos[0]
+
+    if primeiro in (
+        "-h",
+        "--help",
+    ):
+        mostrar_ajuda_principal()
+        return 0
+
+    if primeiro == "buscar":
+        parser = criar_parser_buscar()
+
+        args = parser.parse_args(
+            argumentos[1:]
+        )
+
+        return executar_busca(
+            palavra=args.palavra,
+            output_dir=args.output_dir,
+            delay=args.delay,
+        )
+
+    if primeiro == "perfil":
+        parser = criar_parser_perfil()
+
+        args = parser.parse_args(
+            argumentos[1:]
+        )
+
+        return executar_perfil(
+            perfil_informado=args.perfil,
+            output_dir=args.output_dir,
+            delay=args.delay,
+        )
+
+    if primeiro == "comentarios":
+        parser = criar_parser_comentarios()
+
+        args = parser.parse_args(
+            argumentos[1:]
+        )
+
+        return executar_comentarios(
+            postagem_url=args.postagem,
+            output_dir=args.output_dir,
+            debug=args.debug,
+        )
+
+    if primeiro == "coletar":
+        parser = criar_parser_coletar()
+
+        args = parser.parse_args(
+            argumentos[1:]
+        )
+
+        return executar_coleta_agregada(
+            perfil_informado=args.perfil,
+            output_dir=args.output_dir,
+            delay=args.delay,
+            debug=args.debug,
+        )
+
+    parser = criar_parser_legado()
+
+    args = parser.parse_args(
+        argumentos
+    )
+
+    return executar_coleta_agregada(
+        perfil_informado=args.perfil,
+        output_dir=args.output_dir,
+        delay=args.delay,
+        debug=args.debug,
+    )
 
 
 if __name__ == "__main__":
