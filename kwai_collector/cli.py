@@ -11,7 +11,6 @@ import httpx
 
 from kwai_collector.clients.comment_client import (
     KwaiCommentsError,
-    get_tiny_comments,
 )
 from kwai_collector.clients.post_detail_client import (
     KwaiPostError,
@@ -19,6 +18,9 @@ from kwai_collector.clients.post_detail_client import (
 )
 from kwai_collector.clients.profile_client import (
     get_all_profile_posts,
+)
+from kwai_collector.clients.tiny_comment_client import (
+    get_tiny_comments,
 )
 from kwai_collector.config import settings
 
