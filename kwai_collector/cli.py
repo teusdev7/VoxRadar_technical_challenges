@@ -13,6 +13,10 @@ from kwai_collector.cli_builders import (
     montar_tiny_query_params,
     montar_url_post,
 )
+from kwai_collector.cli_normalizers import (
+    normalizar_comentarios_com_parser,
+    normalizar_posts_com_parser,
+)
 from kwai_collector.cli_parsers import (
     criar_parser_buscar,
     criar_parser_coletar,
@@ -64,57 +68,23 @@ MAX_COMENTARIOS_POR_POST = 20
 def normalizar_posts(
     posts: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    resultados: list[dict[str, Any]] = []
-
-    for post in posts:
-        try:
-            postagem = parse_post(
-                post
-            )
-        except ValueError as exc:
-            logger.warning(
-                "Post ignorado por não atender "
-                "ao schema: %s",
-                exc,
-            )
-            continue
-
-        resultados.append(
-            postagem.model_dump(
-                mode="json",
-            )
-        )
-
-    return resultados
+    return normalizar_posts_com_parser(
+        posts,
+        parse_post,
+        logger,
+    )
 
 
 def normalizar_comentarios(
     comentarios: list[dict[str, Any]],
     postagem_url: str,
 ) -> list[dict[str, Any]]:
-    resultados: list[dict[str, Any]] = []
-
-    for comentario in comentarios:
-        try:
-            comentario_modelo = parse_comment(
-                comentario,
-                postagem_url,
-            )
-        except ValueError as exc:
-            logger.warning(
-                "Comentário ignorado por não "
-                "atender ao schema: %s",
-                exc,
-            )
-            continue
-
-        resultados.append(
-            comentario_modelo.model_dump(
-                mode="json",
-            )
-        )
-
-    return resultados
+    return normalizar_comentarios_com_parser(
+        comentarios,
+        postagem_url,
+        parse_comment,
+        logger,
+    )
 
 
 def executar_busca(
@@ -140,6 +110,7 @@ def executar_busca(
             palavra,
             delay=delay,
         )
+
     except (
         httpx.RequestError,
         httpx.HTTPStatusError,
@@ -195,6 +166,7 @@ def executar_perfil(
         usuario = limpar_usuario(
             perfil_informado
         )
+
     except ValueError as exc:
         logger.error(
             "%s",
@@ -216,6 +188,7 @@ def executar_perfil(
             user_id=usuario_consulta,
             delay=delay,
         )
+
     except (
         httpx.RequestError,
         httpx.HTTPStatusError,
@@ -278,6 +251,7 @@ def executar_comentarios(
         photo_id = extrair_photo_id(
             postagem_url
         )
+
     except ValueError as exc:
         logger.error(
             "%s",
@@ -302,6 +276,7 @@ def executar_comentarios(
                 debug=debug,
             )
         )
+
     except KwaiCommentsError as exc:
         logger.error(
             "Falha ao coletar comentários: %s",
@@ -351,6 +326,7 @@ def executar_coleta_agregada(
         usuario = limpar_usuario(
             perfil_informado
         )
+
     except ValueError as exc:
         logger.error(
             "%s",
@@ -373,11 +349,14 @@ def executar_coleta_agregada(
     )
 
     try:
-        posts_encontrados = get_all_profile_posts(
-            user_id=usuario_consulta,
-            max_paginas=1,
-            delay=0.0,
+        posts_encontrados = (
+            get_all_profile_posts(
+                user_id=usuario_consulta,
+                max_paginas=1,
+                delay=0.0,
+            )
         )
+
     except (
         httpx.RequestError,
         httpx.HTTPStatusError,
@@ -471,6 +450,7 @@ def executar_coleta_agregada(
                     url_post,
                     expected_photo_id=photo_id,
                 )
+
             except KwaiPostError as exc:
                 erro_detalhes = str(
                     exc
@@ -731,7 +711,9 @@ def main(
         )
 
     if primeiro == "comentarios":
-        parser = criar_parser_comentarios()
+        parser = (
+            criar_parser_comentarios()
+        )
 
         args = parser.parse_args(
             argumentos[1:]
