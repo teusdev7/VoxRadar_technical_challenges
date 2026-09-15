@@ -3,11 +3,17 @@ import logging
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from time import sleep, time
+from time import sleep
 from typing import Any
 
 import httpx
 
+from kwai_collector.cli_builders import (
+    montar_perfil,
+    montar_post_fallback,
+    montar_tiny_query_params,
+    montar_url_post,
+)
 from kwai_collector.cli_utils import (
     extrair_photo_id,
     limpar_usuario,
@@ -50,241 +56,14 @@ MAX_POSTS = 10
 MAX_COMENTARIOS_POR_POST = 20
 
 
-def montar_tiny_query_params() -> dict[str, str]:
-    timestamp = str(
-        int(time() * 1000)
-    )
-
-    return {
-        "ver": "13.7",
-        "appver": "13.7.50.646302",
-        "pkg": "com.kwai.video",
-        "c": "GOOGLE_PLAY",
-        "app": "1",
-        "os": "android",
-        "client_key": "3c2cd3f3",
-        "kpn": "KWAI",
-        "kpf": "ANDROID_PHONE",
-        "kwai_tiny_type": "2",
-        "sys": "KWAI_ANDROID_14",
-        "mod": "samsung(SM-A356E)",
-        "net": "WIFI",
-        "language": "pt-br",
-        "country_code": "br",
-        "mcc": "724",
-        "time_zone": (
-            "Brasilia Standard Time "
-            "America/Sao_Paulo"
-        ),
-        "ds": "-1",
-        "egid": "",
-        "abi": "arm64-v8a",
-        "timestamp": timestamp,
-    }
-
-
-def montar_url_post(
-    post: dict[str, Any],
-) -> str | None:
-    photo_id = post.get(
-        "photo_id_str"
-    )
-
-    kwai_id = post.get(
-        "kwai_id"
-    )
-
-    if not photo_id or not kwai_id:
-        return None
-
-    return (
-        "https://www.kwai.com/"
-        f"@{kwai_id}/video/{photo_id}"
-    )
-
-
-def primeiro_url(
-    valor: object,
-) -> str | None:
-    if not isinstance(
-        valor,
-        list,
-    ):
-        return None
-
-    for item in valor:
-        if not isinstance(
-            item,
-            dict,
-        ):
-            continue
-
-        url = item.get(
-            "url"
-        )
-
-        if isinstance(
-            url,
-            str,
-        ):
-            return url
-
-    return None
-
-
-def montar_perfil(
-    usuario_solicitado: str,
-    posts: list[dict[str, Any]],
-) -> dict[str, object]:
-    primeiro_post = posts[0]
-
-    kwai_id = primeiro_post.get(
-        "kwai_id"
-    )
-
-    if not isinstance(
-        kwai_id,
-        str,
-    ):
-        kwai_id = usuario_solicitado
-
-    nome = primeiro_post.get(
-        "user_name"
-    )
-
-    user_id = primeiro_post.get(
-        "user_id_str"
-    )
-
-    bio = primeiro_post.get(
-        "user_text"
-    )
-
-    verificado = primeiro_post.get(
-        "verified"
-    )
-
-    avatar = primeiro_url(
-        primeiro_post.get(
-            "headurls"
-        )
-    )
-
-    return {
-        "usuario": kwai_id,
-        "nome": nome,
-        "id": user_id,
-        "bio": bio,
-        "verificado": verificado,
-        "avatar": avatar,
-        "url": (
-            "https://www.kwai.com/"
-            f"@{kwai_id}"
-        ),
-    }
-
-
-def montar_post_fallback(
-    post: dict[str, Any],
-) -> dict[str, object]:
-    photo_id = post.get(
-        "photo_id_str"
-    )
-
-    kwai_id = post.get(
-        "kwai_id"
-    )
-
-    url_post = montar_url_post(
-        post
-    )
-
-    url_perfil: str | None = None
-
-    if isinstance(
-        kwai_id,
-        str,
-    ):
-        url_perfil = (
-            "https://www.kwai.com/"
-            f"@{kwai_id}"
-        )
-
-    thumbnail = primeiro_url(
-        post.get(
-            "cover_thumbnail_urls"
-        )
-    )
-
-    if thumbnail is None:
-        thumbnail = primeiro_url(
-            post.get(
-                "cover_first_frame_urls"
-            )
-        )
-
-    return {
-        "photo_id": (
-            str(photo_id)
-            if photo_id is not None
-            else None
-        ),
-        "url": url_post,
-        "autor": {
-            "nome": post.get(
-                "user_name"
-            ),
-            "usuario": kwai_id,
-            "id": post.get(
-                "user_id_str"
-            ),
-            "url_perfil": url_perfil,
-        },
-        "caption": post.get(
-            "caption"
-        ),
-        "descricao": None,
-        "publicado_em": None,
-        "data_original": post.get(
-            "time"
-        ),
-        "timestamp": post.get(
-            "timestamp"
-        ),
-        "duracao": None,
-        "thumbnail": thumbnail,
-        "engajamento": {
-            "curtidas": post.get(
-                "like_count"
-            ),
-            "comentarios": post.get(
-                "comment_count"
-            ),
-            "compartilhamentos": post.get(
-                "forward_count"
-            ),
-            "visualizacoes": post.get(
-                "view_count"
-            ),
-            "curtidas_seo": None,
-            "comentarios_seo": None,
-        },
-    }
-
-
 def normalizar_posts(
     posts: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    resultados: list[
-        dict[str, Any]
-    ] = []
+    resultados: list[dict[str, Any]] = []
 
     for post in posts:
         try:
-            postagem = parse_post(
-                post
-            )
-
+            postagem = parse_post(post)
         except ValueError as exc:
             logger.warning(
                 "Post ignorado por não atender "
@@ -295,7 +74,7 @@ def normalizar_posts(
 
         resultados.append(
             postagem.model_dump(
-                mode="json"
+                mode="json",
             )
         )
 
@@ -306,19 +85,14 @@ def normalizar_comentarios(
     comentarios: list[dict[str, Any]],
     postagem_url: str,
 ) -> list[dict[str, Any]]:
-    resultados: list[
-        dict[str, Any]
-    ] = []
+    resultados: list[dict[str, Any]] = []
 
     for comentario in comentarios:
         try:
-            comentario_modelo = (
-                parse_comment(
-                    comentario,
-                    postagem_url,
-                )
+            comentario_modelo = parse_comment(
+                comentario,
+                postagem_url,
             )
-
         except ValueError as exc:
             logger.warning(
                 "Comentário ignorado por não "
@@ -329,7 +103,7 @@ def normalizar_comentarios(
 
         resultados.append(
             comentario_modelo.model_dump(
-                mode="json"
+                mode="json",
             )
         )
 
@@ -359,7 +133,6 @@ def executar_busca(
             palavra,
             delay=delay,
         )
-
     except (
         httpx.RequestError,
         httpx.HTTPStatusError,
@@ -415,7 +188,6 @@ def executar_perfil(
         usuario = limpar_usuario(
             perfil_informado
         )
-
     except ValueError as exc:
         logger.error(
             "%s",
@@ -433,13 +205,10 @@ def executar_perfil(
     )
 
     try:
-        posts_brutos = (
-            get_all_profile_posts(
-                user_id=usuario_consulta,
-                delay=delay,
-            )
+        posts_brutos = get_all_profile_posts(
+            user_id=usuario_consulta,
+            delay=delay,
         )
-
     except (
         httpx.RequestError,
         httpx.HTTPStatusError,
@@ -465,7 +234,10 @@ def executar_perfil(
 
     arquivo_saida = (
         output_dir
-        / f"{nome_arquivo_seguro(usuario)}_posts.json"
+        / (
+            f"{nome_arquivo_seguro(usuario)}"
+            "_posts.json"
+        )
     )
 
     salvar_json(
@@ -499,7 +271,6 @@ def executar_comentarios(
         photo_id = extrair_photo_id(
             postagem_url
         )
-
     except ValueError as exc:
         logger.error(
             "%s",
@@ -524,7 +295,6 @@ def executar_comentarios(
                 debug=debug,
             )
         )
-
     except KwaiCommentsError as exc:
         logger.error(
             "Falha ao coletar comentários: %s",
@@ -532,11 +302,9 @@ def executar_comentarios(
         )
         return 1
 
-    comentarios = (
-        normalizar_comentarios(
-            comentarios_brutos,
-            postagem_url,
-        )
+    comentarios = normalizar_comentarios(
+        comentarios_brutos,
+        postagem_url,
     )
 
     arquivo_saida = (
@@ -576,7 +344,6 @@ def executar_coleta_agregada(
         usuario = limpar_usuario(
             perfil_informado
         )
-
     except ValueError as exc:
         logger.error(
             "%s",
@@ -606,7 +373,6 @@ def executar_coleta_agregada(
                 delay=0.0,
             )
         )
-
     except (
         httpx.RequestError,
         httpx.HTTPStatusError,
@@ -696,13 +462,10 @@ def executar_coleta_agregada(
 
         if url_post is not None:
             try:
-                dados_post = (
-                    get_post_details(
-                        url_post,
-                        expected_photo_id=photo_id,
-                    )
+                dados_post = get_post_details(
+                    url_post,
+                    expected_photo_id=photo_id,
                 )
-
             except KwaiPostError as exc:
                 erro_detalhes = str(
                     exc
@@ -731,7 +494,9 @@ def executar_coleta_agregada(
             dict[str, object]
         ] = []
 
-        erro_comentarios: str | None = None
+        erro_comentarios: (
+            str | None
+        ) = None
 
         try:
             parametros = (
@@ -748,7 +513,8 @@ def executar_coleta_agregada(
 
             comentarios_json = [
                 dict(comentario)
-                for comentario in comentarios[
+                for comentario
+                in comentarios[
                     :MAX_COMENTARIOS_POR_POST
                 ]
             ]
@@ -785,7 +551,9 @@ def executar_coleta_agregada(
                 "caption"
             ),
             "quantidade": quantidade,
-            "comentarios": comentarios_json,
+            "comentarios": (
+                comentarios_json
+            ),
         }
 
         if erro_comentarios is not None:
@@ -1164,7 +932,9 @@ def main(
         )
 
     if primeiro == "comentarios":
-        parser = criar_parser_comentarios()
+        parser = (
+            criar_parser_comentarios()
+        )
 
         args = parser.parse_args(
             argumentos[1:]
