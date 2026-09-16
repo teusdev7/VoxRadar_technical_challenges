@@ -13,6 +13,11 @@ from kwai_collector.cli_builders import (
     montar_tiny_query_params,
     montar_url_post,
 )
+from kwai_collector.cli_commands import (
+    executar_busca_com_dependencias,
+    executar_comentarios_com_dependencias,
+    executar_perfil_com_dependencias,
+)
 from kwai_collector.cli_normalizers import (
     normalizar_comentarios_com_parser,
     normalizar_posts_com_parser,
@@ -92,69 +97,16 @@ def executar_busca(
     output_dir: Path,
     delay: float,
 ) -> int:
-    palavra = palavra.strip()
-
-    if not palavra:
-        logger.error(
-            "Informe uma palavra-chave válida."
-        )
-        return 1
-
-    logger.info(
-        "Buscando posts por: %s",
+    return executar_busca_com_dependencias(
         palavra,
+        output_dir,
+        delay,
+        search_all_posts_fn=search_all_posts,
+        normalizar_posts_fn=normalizar_posts,
+        nome_arquivo_seguro_fn=nome_arquivo_seguro,
+        salvar_json_fn=salvar_json,
+        logger=logger,
     )
-
-    try:
-        posts_brutos = search_all_posts(
-            palavra,
-            delay=delay,
-        )
-
-    except (
-        httpx.RequestError,
-        httpx.HTTPStatusError,
-        RuntimeError,
-    ) as exc:
-        logger.error(
-            "Falha ao buscar posts: %s",
-            exc,
-        )
-        return 1
-
-    posts = normalizar_posts(
-        posts_brutos
-    )
-
-    nome = nome_arquivo_seguro(
-        palavra
-    )
-
-    arquivo_saida = (
-        output_dir
-        / f"busca_{nome}.json"
-    )
-
-    salvar_json(
-        posts,
-        arquivo_saida,
-    )
-
-    logger.info(
-        "Busca concluída."
-    )
-
-    logger.info(
-        "Posts coletados: %d",
-        len(posts),
-    )
-
-    logger.info(
-        "Arquivo salvo em: %s",
-        arquivo_saida,
-    )
-
-    return 0
 
 
 def executar_perfil(
@@ -162,84 +114,17 @@ def executar_perfil(
     output_dir: Path,
     delay: float,
 ) -> int:
-    try:
-        usuario = limpar_usuario(
-            perfil_informado
-        )
-
-    except ValueError as exc:
-        logger.error(
-            "%s",
-            exc,
-        )
-        return 1
-
-    usuario_consulta = (
-        f"@{usuario}"
+    return executar_perfil_com_dependencias(
+        perfil_informado,
+        output_dir,
+        delay,
+        limpar_usuario_fn=limpar_usuario,
+        get_all_profile_posts_fn=get_all_profile_posts,
+        normalizar_posts_fn=normalizar_posts,
+        nome_arquivo_seguro_fn=nome_arquivo_seguro,
+        salvar_json_fn=salvar_json,
+        logger=logger,
     )
-
-    logger.info(
-        "Coletando posts do perfil: %s",
-        usuario_consulta,
-    )
-
-    try:
-        posts_brutos = get_all_profile_posts(
-            user_id=usuario_consulta,
-            delay=delay,
-        )
-
-    except (
-        httpx.RequestError,
-        httpx.HTTPStatusError,
-        RuntimeError,
-    ) as exc:
-        logger.error(
-            "Falha ao coletar o perfil: %s",
-            exc,
-        )
-        return 1
-
-    if not posts_brutos:
-        logger.error(
-            "Nenhuma postagem encontrada "
-            "para o perfil %s.",
-            usuario_consulta,
-        )
-        return 1
-
-    posts = normalizar_posts(
-        posts_brutos
-    )
-
-    arquivo_saida = (
-        output_dir
-        / (
-            f"{nome_arquivo_seguro(usuario)}"
-            "_posts.json"
-        )
-    )
-
-    salvar_json(
-        posts,
-        arquivo_saida,
-    )
-
-    logger.info(
-        "Coleta do perfil concluída."
-    )
-
-    logger.info(
-        "Posts coletados: %d",
-        len(posts),
-    )
-
-    logger.info(
-        "Arquivo salvo em: %s",
-        arquivo_saida,
-    )
-
-    return 0
 
 
 def executar_comentarios(
@@ -247,73 +132,21 @@ def executar_comentarios(
     output_dir: Path,
     debug: bool,
 ) -> int:
-    try:
-        photo_id = extrair_photo_id(
-            postagem_url
-        )
-
-    except ValueError as exc:
-        logger.error(
-            "%s",
-            exc,
-        )
-        return 1
-
-    logger.info(
-        "Coletando comentários do post %s",
-        photo_id,
-    )
-
-    try:
-        parametros = (
-            montar_tiny_query_params()
-        )
-
-        comentarios_brutos = (
-            get_tiny_comments(
-                photo_id=photo_id,
-                query_params=parametros,
-                debug=debug,
-            )
-        )
-
-    except KwaiCommentsError as exc:
-        logger.error(
-            "Falha ao coletar comentários: %s",
-            exc,
-        )
-        return 1
-
-    comentarios = normalizar_comentarios(
-        comentarios_brutos,
+    return executar_comentarios_com_dependencias(
         postagem_url,
+        output_dir,
+        debug,
+        extrair_photo_id_fn=extrair_photo_id,
+        montar_tiny_query_params_fn=(
+            montar_tiny_query_params
+        ),
+        get_tiny_comments_fn=get_tiny_comments,
+        normalizar_comentarios_fn=(
+            normalizar_comentarios
+        ),
+        salvar_json_fn=salvar_json,
+        logger=logger,
     )
-
-    arquivo_saida = (
-        output_dir
-        / f"{photo_id}_comentarios.json"
-    )
-
-    salvar_json(
-        comentarios,
-        arquivo_saida,
-    )
-
-    logger.info(
-        "Coleta de comentários concluída."
-    )
-
-    logger.info(
-        "Comentários coletados: %d",
-        len(comentarios),
-    )
-
-    logger.info(
-        "Arquivo salvo em: %s",
-        arquivo_saida,
-    )
-
-    return 0
 
 
 def executar_coleta_agregada(
