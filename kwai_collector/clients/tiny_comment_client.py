@@ -1,8 +1,11 @@
+import logging
 from typing import Any
 
 import httpx
 
 from kwai_collector.clients.comment_client import KwaiCommentsError
+
+logger = logging.getLogger(__name__)
 
 A1_Radar = "A1_Radar"
 
@@ -26,56 +29,50 @@ TINY_HEADERS = {
 }
 
 
-def _mostrar_tiny_request(
+def _registrar_tiny_request(
     url: str,
     query_params: dict[str, str],
     body: dict[str, str],
 ) -> None:
-    print()
-    print("=" * 60)
-    print("TINY REQUEST")
-    print("=" * 60)
-    print("METHOD: POST")
-
     request = httpx.Request(
         "POST",
         url,
         params=query_params,
     )
 
-    print(f"URL: {request.url}")
-    print(
-        "BODY KEYS:",
+    logger.debug(
+        "TINY REQUEST | method=POST | url=%s",
+        request.url,
+    )
+
+    logger.debug(
+        "TINY REQUEST | body_keys=%s",
         sorted(body.keys()),
     )
-    print(
-        "QUERY KEYS:",
+
+    logger.debug(
+        "TINY REQUEST | query_keys=%s",
         sorted(query_params.keys()),
     )
 
 
-def _mostrar_tiny_response(
+def _registrar_tiny_response(
     response: httpx.Response,
 ) -> None:
-    print()
-    print("=" * 60)
-    print("TINY RESPONSE")
-    print("=" * 60)
-
-    print(
-        "STATUS:",
+    logger.debug(
+        "TINY RESPONSE | status=%d",
         response.status_code,
     )
 
-    print(
-        "CONTENT-TYPE:",
+    logger.debug(
+        "TINY RESPONSE | content_type=%s",
         response.headers.get(
             "content-type",
         ),
     )
 
-    print(
-        "BODY COMPLETO:",
+    logger.debug(
+        "TINY RESPONSE | body=%s",
         response.text,
     )
 
@@ -135,7 +132,7 @@ def get_tiny_comments(
         )
 
         if debug:
-            _mostrar_tiny_request(
+            _registrar_tiny_request(
                 url,
                 params,
                 body,
@@ -152,7 +149,7 @@ def get_tiny_comments(
             )
 
             if debug:
-                _mostrar_tiny_response(
+                _registrar_tiny_response(
                     response
                 )
 
@@ -160,6 +157,7 @@ def get_tiny_comments(
 
             try:
                 data = response.json()
+
             except ValueError as exc:
                 raise KwaiCommentsError(
                     "A Tiny API retornou uma "
@@ -175,7 +173,9 @@ def get_tiny_comments(
                     "um objeto JSON."
                 )
 
-            result = data.get("result")
+            result = data.get(
+                "result"
+            )
 
             if result not in (
                 1,

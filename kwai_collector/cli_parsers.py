@@ -1,4 +1,5 @@
 import argparse
+import sys
 from pathlib import Path
 
 from kwai_collector.cli_utils import (
@@ -129,9 +130,7 @@ def criar_parser_comentarios() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "postagem",
-        help=(
-            "URL da postagem ou photo_id."
-        ),
+        help="URL da postagem ou photo_id.",
     )
 
     parser.add_argument(
@@ -208,6 +207,6 @@ Use:
 para ver as opções de cada comando.
 """.strip()
 
-    print(
-        mensagem
+    sys.stdout.write(
+        f"{mensagem}\n"
     )
