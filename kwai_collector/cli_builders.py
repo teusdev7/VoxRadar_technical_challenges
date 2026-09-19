@@ -1,8 +1,50 @@
+import os
 from time import time
 from typing import Any
 
 
+def carregar_identificadores_tiny() -> tuple[str, str]:
+    """
+    Carrega DID e EGID a partir das variáveis
+    de ambiente.
+
+    Os identificadores não ficam salvos
+    diretamente no código-fonte.
+    """
+    did = os.getenv(
+        "KWAI_DID",
+        "",
+    ).strip()
+
+    egid = os.getenv(
+        "KWAI_EGID",
+        "",
+    ).strip()
+
+    if not did:
+        raise RuntimeError(
+            "KWAI_DID não foi configurado."
+        )
+
+    if not egid:
+        raise RuntimeError(
+            "KWAI_EGID não foi configurado."
+        )
+
+    if (
+        not egid.startswith("DFP")
+        or len(egid) != 64
+    ):
+        raise RuntimeError(
+            "KWAI_EGID possui formato inesperado."
+        )
+
+    return did, egid
+
+
 def montar_tiny_query_params() -> dict[str, str]:
+    did, egid = carregar_identificadores_tiny()
+
     timestamp = str(
         int(time() * 1000)
     )
@@ -29,7 +71,8 @@ def montar_tiny_query_params() -> dict[str, str]:
             "America/Sao_Paulo"
         ),
         "ds": "-1",
-        "egid": "",
+        "did": did,
+        "egid": egid,
         "abi": "arm64-v8a",
         "timestamp": timestamp,
     }
