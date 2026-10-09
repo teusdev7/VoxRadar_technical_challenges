@@ -23,6 +23,7 @@ def test_parse_comment_retorna_comentario():
     assert comentario.texto == "Este é um comentário de teste."
     assert comentario.curtidas == 10
 
+
 def test_parse_comment_mobile_retorna_comentario():
     comentario_bruto = {
         "comment_id": "182003031691232109",

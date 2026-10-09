@@ -21,20 +21,15 @@ def normalizar_posts_com_parser(
     parser: PostParser,
     logger: logging.Logger,
 ) -> list[dict[str, Any]]:
-    resultados: list[
-        dict[str, Any]
-    ] = []
+    resultados: list[dict[str, Any]] = []
 
     for post in posts:
         try:
-            postagem = parser(
-                post
-            )
+            postagem = parser(post)
 
         except ValueError as exc:
             logger.warning(
-                "Post ignorado por não atender "
-                "ao schema: %s",
+                "Post ignorado por não atender ao schema: %s",
                 exc,
             )
             continue
@@ -54,9 +49,7 @@ def normalizar_comentarios_com_parser(
     parser: CommentParser,
     logger: logging.Logger,
 ) -> list[dict[str, Any]]:
-    resultados: list[
-        dict[str, Any]
-    ] = []
+    resultados: list[dict[str, Any]] = []
 
     for comentario in comentarios:
         try:
@@ -67,8 +60,7 @@ def normalizar_comentarios_com_parser(
 
         except ValueError as exc:
             logger.warning(
-                "Comentário ignorado por não "
-                "atender ao schema: %s",
+                "Comentário ignorado por não atender ao schema: %s",
                 exc,
             )
             continue

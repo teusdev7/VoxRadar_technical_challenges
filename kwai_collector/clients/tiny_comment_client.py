@@ -34,10 +34,25 @@ def _registrar_tiny_request(
     query_params: dict[str, str],
     body: dict[str, str],
 ) -> None:
+    campos_sensiveis = {
+        "did",
+        "egid",
+        "sig",
+        "__ns_sig3",
+        "__ns_sig4",
+        "client_key",
+        "llsid",
+    }
+
+    params_seguros = {
+        chave: ("***REDACTED***" if chave.lower() in campos_sensiveis else valor)
+        for chave, valor in query_params.items()
+    }
+
     request = httpx.Request(
         "POST",
         url,
-        params=query_params,
+        params=params_seguros,
     )
 
     logger.debug(
@@ -106,19 +121,12 @@ def get_tiny_comments(
     photo_id = str(photo_id).strip()
 
     if not photo_id:
-        raise KwaiCommentsError(
-            "photo_id não pode ser vazio."
-        )
+        raise KwaiCommentsError("photo_id não pode ser vazio.")
 
     if not photo_id.isdigit():
-        raise KwaiCommentsError(
-            "photo_id deve ser numérico."
-        )
+        raise KwaiCommentsError("photo_id deve ser numérico.")
 
-    params = {
-        str(chave): str(valor)
-        for chave, valor in query_params.items()
-    }
+    params = {str(chave): str(valor) for chave, valor in query_params.items()}
 
     body = dict(params)
     body["photo_id"] = photo_id
@@ -126,10 +134,7 @@ def get_tiny_comments(
     ultimo_erro: KwaiCommentsError | None = None
 
     for base_url in TINY_BASE_URLS:
-        url = (
-            f"{base_url}"
-            f"{TINY_COMMENTS_ENDPOINT}"
-        )
+        url = f"{base_url}{TINY_COMMENTS_ENDPOINT}"
 
         if debug:
             _registrar_tiny_request(
@@ -149,9 +154,7 @@ def get_tiny_comments(
             )
 
             if debug:
-                _registrar_tiny_response(
-                    response
-                )
+                _registrar_tiny_response(response)
 
             response.raise_for_status()
 
@@ -160,22 +163,16 @@ def get_tiny_comments(
 
             except ValueError as exc:
                 raise KwaiCommentsError(
-                    "A Tiny API retornou uma "
-                    "resposta que não é JSON."
+                    "A Tiny API retornou uma resposta que não é JSON."
                 ) from exc
 
             if not isinstance(
                 data,
                 dict,
             ):
-                raise KwaiCommentsError(
-                    "A resposta Tiny não é "
-                    "um objeto JSON."
-                )
+                raise KwaiCommentsError("A resposta Tiny não é um objeto JSON.")
 
-            result = data.get(
-                "result"
-            )
+            result = data.get("result")
 
             if result not in (
                 1,
@@ -188,9 +185,7 @@ def get_tiny_comments(
                     f"message={data.get('message')!r}"
                 )
 
-            comments_raw = data.get(
-                "comments"
-            )
+            comments_raw = data.get("comments")
 
             # {"result": 1} sem "comments"
             # representa uma postagem sem comentários.
@@ -202,14 +197,10 @@ def get_tiny_comments(
                 list,
             ):
                 raise KwaiCommentsError(
-                    "O campo 'comments' da "
-                    "resposta Tiny não possui "
-                    "o formato esperado."
+                    "O campo 'comments' da resposta Tiny não possui o formato esperado."
                 )
 
-            comments: list[
-                dict[str, Any]
-            ] = [
+            comments: list[dict[str, Any]] = [
                 dict(item)
                 for item in comments_raw
                 if isinstance(
@@ -222,16 +213,11 @@ def get_tiny_comments(
 
         except httpx.HTTPStatusError as exc:
             ultimo_erro = KwaiCommentsError(
-                "Erro HTTP "
-                f"{exc.response.status_code} "
-                "ao acessar a Tiny API."
+                f"Erro HTTP {exc.response.status_code} ao acessar a Tiny API."
             )
 
         except httpx.RequestError as exc:
-            ultimo_erro = KwaiCommentsError(
-                "Erro de conexão com "
-                f"a Tiny API: {exc}"
-            )
+            ultimo_erro = KwaiCommentsError(f"Erro de conexão com a Tiny API: {exc}")
 
         except KwaiCommentsError as exc:
             ultimo_erro = exc
@@ -239,7 +225,4 @@ def get_tiny_comments(
     if ultimo_erro is not None:
         raise ultimo_erro
 
-    raise KwaiCommentsError(
-        "Não foi possível consultar "
-        "a Tiny API."
-    )
+    raise KwaiCommentsError("Não foi possível consultar a Tiny API.")

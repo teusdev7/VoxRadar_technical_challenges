@@ -1,7 +1,7 @@
 from kwai_collector.clients import mobile_comment_client
 
 
-def test_build_root_payload():
+def test_build_root_payload_primeira_pagina():
     payload = mobile_comment_client.build_root_payload(
         photo_id="123",
         user_id="456",
@@ -11,14 +11,59 @@ def test_build_root_payload():
         "photoId": "123",
         "user_id": "456",
         "order": "desc",
-        "pcursor": "",
         "count": "10",
         "photoPageType": "0",
         "requestType": "3",
+        "llsid": "",
         "isPreload": "false",
         "preloadSource": "",
-        "os": "android",
     }
+
+    assert "pcursor" not in payload
+    assert "selectedRootCommentId" not in payload
+
+
+def test_build_root_payload_com_pcursor():
+    payload = mobile_comment_client.build_root_payload(
+        photo_id="123",
+        user_id="456",
+        pcursor="cursor_2",
+    )
+
+    assert payload["photoId"] == "123"
+    assert payload["user_id"] == "456"
+    assert payload["pcursor"] == "cursor_2"
+    assert payload["count"] == "10"
+
+
+def test_build_root_payload_com_selected_root_comment():
+    payload = mobile_comment_client.build_root_payload(
+        photo_id="123",
+        user_id="456",
+        selected_root_comment_id="999",
+    )
+
+    assert payload["selectedRootCommentId"] == "999"
+
+
+def test_build_root_payload_count_minimo_10():
+    payload = mobile_comment_client.build_root_payload(
+        photo_id="123",
+        user_id="456",
+        count=3,
+    )
+
+    assert payload["count"] == "10"
+
+
+def test_build_root_payload_count_maior_que_10():
+    payload = mobile_comment_client.build_root_payload(
+        photo_id="123",
+        user_id="456",
+        count=25,
+    )
+
+    assert payload["count"] == "25"
 
 
 def test_build_subcomment_payload_primeira_pagina():
@@ -31,7 +76,7 @@ def test_build_subcomment_payload_primeira_pagina():
     assert payload["photoId"] == "123"
     assert payload["user_id"] == "456"
     assert payload["rootCommentId"] == "789"
-    assert payload["pcursor"] == ""
+    assert "pcursor" not in payload
     assert payload["count"] == "3"
     assert payload["repeatCommentIds"] == ""
 
@@ -79,31 +124,20 @@ def test_get_subcomments():
 
 
 def test_get_pcursor():
-    assert (
-        mobile_comment_client.get_pcursor(
-            {"pcursor": "cursor_123"}
-        )
-        == "cursor_123"
-    )
+    assert mobile_comment_client.get_pcursor({"pcursor": "cursor_123"}) == "cursor_123"
 
-    assert (
-        mobile_comment_client.get_pcursor({})
-        is None
-    )
+    assert mobile_comment_client.get_pcursor({}) is None
 
 
 def test_end_cursors():
     assert mobile_comment_client.is_end_cursor(None)
     assert mobile_comment_client.is_end_cursor("")
     assert mobile_comment_client.is_end_cursor("no_more")
-    assert mobile_comment_client.is_end_cursor(
-        "more_cursor_total"
-    )
+    assert mobile_comment_client.is_end_cursor("more_cursor_total")
 
-    assert not mobile_comment_client.is_end_cursor(
-        "cursor_123"
-    )
-    
+    assert not mobile_comment_client.is_end_cursor("cursor_123")
+
+
 def test_collect_root_pages_com_paginacao():
     pages = [
         {
@@ -128,9 +162,7 @@ def test_collect_root_pages_com_paginacao():
         },
     ]
 
-    comments = mobile_comment_client.collect_root_pages(
-        pages
-    )
+    comments = mobile_comment_client.collect_root_pages(pages)
 
     assert [item["comment_id"] for item in comments] == [
         "1",
@@ -162,9 +194,7 @@ def test_collect_root_pages_para_em_cursor_repetido():
         },
     ]
 
-    comments = mobile_comment_client.collect_root_pages(
-        pages
-    )
+    comments = mobile_comment_client.collect_root_pages(pages)
 
     assert [item["comment_id"] for item in comments] == [
         "1",
@@ -193,11 +223,9 @@ def test_collect_subcomment_pages():
         },
     ]
 
-    comments = (
-        mobile_comment_client.collect_subcomment_pages(
-            pages,
-            embedded=embedded,
-        )
+    comments = mobile_comment_client.collect_subcomment_pages(
+        pages,
+        embedded=embedded,
     )
 
     assert [item["comment_id"] for item in comments] == [
@@ -219,11 +247,9 @@ def test_collect_subcomment_pages_respeita_limite():
         }
     ]
 
-    comments = (
-        mobile_comment_client.collect_subcomment_pages(
-            pages,
-            max_subcomments=2,
-        )
+    comments = mobile_comment_client.collect_subcomment_pages(
+        pages,
+        max_subcomments=2,
     )
 
     assert len(comments) == 2

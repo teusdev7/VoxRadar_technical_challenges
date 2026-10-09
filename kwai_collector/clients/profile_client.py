@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import logging
 import time
-from typing import Any
+from typing import Any, Final
 
 import httpx
 
@@ -9,17 +11,48 @@ from kwai_collector.config import settings
 logger = logging.getLogger(__name__)
 
 
+PROFILE_FEED_URL: Final = (
+    "https://www.kwai.com/rest/o/w/pc/feed/profile"
+)
+
+PROFILE_PAGE_SIZE: Final = 20
+
+HTTP_TOO_MANY_REQUESTS: Final = 429
+HTTP_SERVER_ERROR_MIN: Final = 500
+
+
+def _calcular_backoff(
+    tentativa: int,
+    backoff_base: float,
+) -> float:
+    return backoff_base * (
+        2 ** (tentativa - 1)
+    )
+
+
+def _deve_repetir_request(
+    status_code: int,
+) -> bool:
+    return (
+        status_code
+        == HTTP_TOO_MANY_REQUESTS
+        or status_code
+        >= HTTP_SERVER_ERROR_MIN
+    )
+
+
 def get_profile_page(
     user_id: str,
     pcursor: str = "",
     max_tentativas: int = settings.max_tentativas,
     backoff_base: float = settings.backoff_base,
-) -> tuple[list[dict[str, Any]], str | None]:
-    url = "https://www.kwai.com/rest/o/w/pc/feed/profile"
-
+) -> tuple[
+    list[dict[str, Any]],
+    str | None,
+]:
     payload = {
         "beforePage": "",
-        "count": 20,
+        "count": PROFILE_PAGE_SIZE,
         "fromPage": "PC_PROFILE",
         "pcursor": pcursor,
         "userId": user_id,
@@ -27,95 +60,213 @@ def get_profile_page(
 
     headers = {
         "Content-Type": "application/json",
-        "accept": "application/json, text/plain, */*",
+        "accept": (
+            "application/json, "
+            "text/plain, */*"
+        ),
     }
 
-    for tentativa in range(1, max_tentativas + 1):
+    for tentativa in range(
+        1,
+        max_tentativas + 1,
+    ):
         try:
             response = httpx.post(
-                url,
+                PROFILE_FEED_URL,
                 json=payload,
                 headers=headers,
             )
+
         except httpx.RequestError:
             if tentativa == max_tentativas:
                 raise
 
-            espera = backoff_base * (2 ** (tentativa - 1))
+            espera = _calcular_backoff(
+                tentativa,
+                backoff_base,
+            )
 
             logger.warning(
-                "Erro de conexão. Nova tentativa em %.1fs.",
+                "Erro de conexão. "
+                "Nova tentativa em %.1fs.",
                 espera,
             )
 
-            time.sleep(espera)
+            time.sleep(
+                espera
+            )
+
             continue
 
-        if response.status_code == 429 or response.status_code >= 500:
+        if _deve_repetir_request(
+            response.status_code
+        ):
             if tentativa == max_tentativas:
                 response.raise_for_status()
 
-            espera = backoff_base * (2 ** (tentativa - 1))
+            espera = _calcular_backoff(
+                tentativa,
+                backoff_base,
+            )
 
             logger.warning(
-                "Kwai respondeu HTTP %d. Nova tentativa em %.1fs.",
+                "Kwai respondeu HTTP %d. "
+                "Nova tentativa em %.1fs.",
                 response.status_code,
                 espera,
             )
 
-            time.sleep(espera)
+            time.sleep(
+                espera
+            )
+
             continue
 
         response.raise_for_status()
 
         dados = response.json()
 
-        feeds = dados.get("feeds", [])
-        cursor = dados.get("cursor")
+        feeds_raw = dados.get(
+            "feeds",
+            [],
+        )
 
-        return feeds, cursor
+        cursor_raw = dados.get(
+            "cursor"
+        )
 
-    raise RuntimeError("Não foi possível obter a página do perfil.")
+        feeds: list[
+            dict[str, Any]
+        ] = (
+            feeds_raw
+            if isinstance(
+                feeds_raw,
+                list,
+            )
+            else []
+        )
+
+        cursor = (
+            str(cursor_raw)
+            if cursor_raw is not None
+            else None
+        )
+
+        return (
+            feeds,
+            cursor,
+        )
+
+    raise RuntimeError(
+        "Não foi possível obter "
+        "a página do perfil."
+    )
+
 
 def get_all_profile_posts(
     user_id: str,
-    max_paginas: int = 5,
+    max_paginas: int | None = None,
     delay: float = settings.delay,
 ) -> list[dict[str, Any]]:
-    resultados: list[dict[str, Any]] = []
+    if (
+        max_paginas is not None
+        and max_paginas <= 0
+    ):
+        return []
+
+    resultados: list[
+        dict[str, Any]
+    ] = []
+
     ids_vistos: set[str] = set()
+    cursores_vistos: set[str] = set()
 
     pcursor = ""
+    pagina = 0
 
-    for pagina in range(max_paginas):
-        if pagina > 0 and delay > 0:
-            time.sleep(delay)
+    while (
+        max_paginas is None
+        or pagina < max_paginas
+    ):
+        if (
+            pagina > 0
+            and delay > 0
+        ):
+            time.sleep(
+                delay
+            )
 
-        feeds, novo_cursor = get_profile_page(
-            user_id=user_id,
-            pcursor=pcursor,
+        feeds, novo_cursor = (
+            get_profile_page(
+                user_id=user_id,
+                pcursor=pcursor,
+            )
         )
+
+        pagina += 1
 
         if not feeds:
             break
 
-        for post in feeds:
-            post_id = post.get("photo_id_str")
-
-            if post_id is not None and post_id in ids_vistos:
-                continue
-
-            if post_id is not None:
-                ids_vistos.add(post_id)
-
-            resultados.append(post)
+        _adicionar_posts_unicos(
+            feeds,
+            resultados,
+            ids_vistos,
+        )
 
         if not novo_cursor:
             break
 
         if novo_cursor == pcursor:
+            logger.warning(
+                "Paginação encerrada porque "
+                "o cursor não avançou."
+            )
             break
+
+        if novo_cursor in cursores_vistos:
+            logger.warning(
+                "Paginação encerrada porque "
+                "um cursor foi repetido."
+            )
+            break
+
+        cursores_vistos.add(
+            novo_cursor
+        )
 
         pcursor = novo_cursor
 
     return resultados
+
+
+def _adicionar_posts_unicos(
+    feeds: list[dict[str, Any]],
+    resultados: list[dict[str, Any]],
+    ids_vistos: set[str],
+) -> None:
+    for post in feeds:
+        post_id_raw = post.get(
+            "photo_id_str"
+        )
+
+        if post_id_raw is None:
+            resultados.append(
+                post
+            )
+            continue
+
+        post_id = str(
+            post_id_raw
+        )
+
+        if post_id in ids_vistos:
+            continue
+
+        ids_vistos.add(
+            post_id
+        )
+
+        resultados.append(
+            post
+        )

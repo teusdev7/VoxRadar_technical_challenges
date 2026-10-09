@@ -1,28 +1,22 @@
+from __future__ import annotations
+
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import httpx
 
-from kwai_collector.clients.comment_client import (
-    KwaiCommentsError,
-)
-
 PostRaw = dict[str, Any]
+PostNormalizado = dict[str, Any]
 
 SearchPostsFn = Callable[..., list[PostRaw]]
 GetProfilePostsFn = Callable[..., list[PostRaw]]
-GetCommentsFn = Callable[..., list[PostRaw]]
 
 NormalizePostsFn = Callable[
     [list[PostRaw]],
-    list[dict[str, Any]],
-]
-
-NormalizeCommentsFn = Callable[
-    [list[PostRaw], str],
-    list[dict[str, Any]],
+    list[PostNormalizado],
 ]
 
 SaveJsonFn = Callable[
@@ -40,265 +34,252 @@ CleanUserFn = Callable[
     str,
 ]
 
-ExtractPhotoIdFn = Callable[
-    [str],
-    str,
-]
 
-QueryParamsFn = Callable[
-    [],
-    dict[str, str],
-]
+@dataclass(frozen=True, slots=True)
+class SearchCommandResult:
+    exit_code: int
+    raw_posts: list[PostRaw]
+    posts: list[PostNormalizado]
+    output_path: Path | None
 
 
-def executar_busca_com_dependencias(
-    palavra: str,
-    output_dir: Path,
-    delay: float,
-    *,
-    search_all_posts_fn: SearchPostsFn,
-    normalizar_posts_fn: NormalizePostsFn,
-    nome_arquivo_seguro_fn: SafeNameFn,
-    salvar_json_fn: SaveJsonFn,
-    logger: logging.Logger,
-) -> int:
-    palavra = palavra.strip()
+@dataclass(frozen=True, slots=True)
+class SearchCommand:
+    search_posts: SearchPostsFn
+    normalize_posts: NormalizePostsFn
+    safe_filename: SafeNameFn
+    save_json: SaveJsonFn
+    logger: logging.Logger
 
-    if not palavra:
-        logger.error(
-            "Informe uma palavra-chave válida."
-        )
-        return 1
-
-    logger.info(
-        "Buscando posts por: %s",
-        palavra,
-    )
-
-    try:
-        posts_brutos = search_all_posts_fn(
-            palavra,
+    def execute(
+        self,
+        keyword: str,
+        output_dir: Path,
+        delay: float,
+    ) -> int:
+        return self.run(
+            keyword=keyword,
+            output_dir=output_dir,
             delay=delay,
+        ).exit_code
+
+    def run(
+        self,
+        *,
+        keyword: str,
+        output_dir: Path,
+        delay: float,
+    ) -> SearchCommandResult:
+        normalized_keyword = keyword.strip()
+
+        if not normalized_keyword:
+            self.logger.error(
+                "Informe uma palavra-chave válida."
+            )
+            return SearchCommandResult(
+                exit_code=1,
+                raw_posts=[],
+                posts=[],
+                output_path=None,
+            )
+
+        self.logger.info(
+            "Buscando posts por: %s",
+            normalized_keyword,
         )
 
-    except (
-        httpx.RequestError,
-        httpx.HTTPStatusError,
-        RuntimeError,
-    ) as exc:
-        logger.error(
-            "Falha ao buscar posts: %s",
-            exc,
-        )
-        return 1
-
-    posts = normalizar_posts_fn(
-        posts_brutos
-    )
-
-    nome = nome_arquivo_seguro_fn(
-        palavra
-    )
-
-    arquivo_saida = (
-        output_dir
-        / f"busca_{nome}.json"
-    )
-
-    salvar_json_fn(
-        posts,
-        arquivo_saida,
-    )
-
-    logger.info(
-        "Busca concluída."
-    )
-
-    logger.info(
-        "Posts coletados: %d",
-        len(posts),
-    )
-
-    logger.info(
-        "Arquivo salvo em: %s",
-        arquivo_saida,
-    )
-
-    return 0
-
-
-def executar_perfil_com_dependencias(
-    perfil_informado: str,
-    output_dir: Path,
-    delay: float,
-    *,
-    limpar_usuario_fn: CleanUserFn,
-    get_all_profile_posts_fn: GetProfilePostsFn,
-    normalizar_posts_fn: NormalizePostsFn,
-    nome_arquivo_seguro_fn: SafeNameFn,
-    salvar_json_fn: SaveJsonFn,
-    logger: logging.Logger,
-) -> int:
-    try:
-        usuario = limpar_usuario_fn(
-            perfil_informado
+        raw_posts = self._fetch_posts(
+            normalized_keyword,
+            delay,
         )
 
-    except ValueError as exc:
-        logger.error(
-            "%s",
-            exc,
+        if raw_posts is None:
+            return SearchCommandResult(
+                exit_code=1,
+                raw_posts=[],
+                posts=[],
+                output_path=None,
+            )
+
+        posts = self.normalize_posts(
+            raw_posts
         )
-        return 1
 
-    usuario_consulta = (
-        f"@{usuario}"
-    )
+        output_path = (
+            output_dir
+            / (
+                "busca_"
+                f"{self.safe_filename(normalized_keyword)}"
+                ".json"
+            )
+        )
 
-    logger.info(
-        "Coletando posts do perfil: %s",
-        usuario_consulta,
-    )
+        self.save_json(
+            posts,
+            output_path,
+        )
 
-    try:
-        posts_brutos = (
-            get_all_profile_posts_fn(
-                user_id=usuario_consulta,
+        self.logger.info(
+            "Busca concluída."
+        )
+
+        self.logger.info(
+            "Posts coletados: %d",
+            len(posts),
+        )
+
+        self.logger.info(
+            "Arquivo salvo em: %s",
+            output_path,
+        )
+
+        return SearchCommandResult(
+            exit_code=0,
+            raw_posts=raw_posts,
+            posts=posts,
+            output_path=output_path,
+        )
+
+    def _fetch_posts(
+        self,
+        keyword: str,
+        delay: float,
+    ) -> list[PostRaw] | None:
+        try:
+            return self.search_posts(
+                keyword,
                 delay=delay,
             )
+        except (
+            httpx.RequestError,
+            httpx.HTTPStatusError,
+            RuntimeError,
+        ) as exc:
+            self.logger.error(
+                "Falha ao buscar posts: %s",
+                exc,
+            )
+            return None
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileCommand:
+    clean_user: CleanUserFn
+    get_profile_posts: GetProfilePostsFn
+    normalize_posts: NormalizePostsFn
+    safe_filename: SafeNameFn
+    save_json: SaveJsonFn
+    logger: logging.Logger
+
+    def execute(
+        self,
+        profile: str,
+        output_dir: Path,
+        delay: float,
+    ) -> int:
+        user = self._normalize_user(
+            profile
         )
 
-    except (
-        httpx.RequestError,
-        httpx.HTTPStatusError,
-        RuntimeError,
-    ) as exc:
-        logger.error(
-            "Falha ao coletar o perfil: %s",
-            exc,
-        )
-        return 1
+        if user is None:
+            return 1
 
-    if not posts_brutos:
-        logger.error(
-            "Nenhuma postagem encontrada "
-            "para o perfil %s.",
-            usuario_consulta,
-        )
-        return 1
+        query_user = f"@{user}"
 
-    posts = normalizar_posts_fn(
-        posts_brutos
-    )
-
-    arquivo_saida = (
-        output_dir
-        / (
-            f"{nome_arquivo_seguro_fn(usuario)}"
-            "_posts.json"
-        )
-    )
-
-    salvar_json_fn(
-        posts,
-        arquivo_saida,
-    )
-
-    logger.info(
-        "Coleta do perfil concluída."
-    )
-
-    logger.info(
-        "Posts coletados: %d",
-        len(posts),
-    )
-
-    logger.info(
-        "Arquivo salvo em: %s",
-        arquivo_saida,
-    )
-
-    return 0
-
-
-def executar_comentarios_com_dependencias(
-    postagem_url: str,
-    output_dir: Path,
-    debug: bool,
-    *,
-    extrair_photo_id_fn: ExtractPhotoIdFn,
-    montar_tiny_query_params_fn: QueryParamsFn,
-    get_tiny_comments_fn: GetCommentsFn,
-    normalizar_comentarios_fn: NormalizeCommentsFn,
-    salvar_json_fn: SaveJsonFn,
-    logger: logging.Logger,
-) -> int:
-    try:
-        photo_id = extrair_photo_id_fn(
-            postagem_url
+        self.logger.info(
+            "Coletando posts do perfil: %s",
+            query_user,
         )
 
-    except ValueError as exc:
-        logger.error(
-            "%s",
-            exc,
-        )
-        return 1
-
-    logger.info(
-        "Coletando comentários do post %s",
-        photo_id,
-    )
-
-    try:
-        parametros = (
-            montar_tiny_query_params_fn()
+        raw_posts = self._fetch_posts(
+            query_user,
+            delay,
         )
 
-        comentarios_brutos = (
-            get_tiny_comments_fn(
-                photo_id=photo_id,
-                query_params=parametros,
-                debug=debug,
+        if raw_posts is None:
+            return 1
+
+        if not raw_posts:
+            self.logger.error(
+                "Nenhuma postagem encontrada "
+                "para o perfil %s.",
+                query_user,
+            )
+            return 1
+
+        posts = self.normalize_posts(
+            raw_posts
+        )
+
+        if not posts:
+            self.logger.error(
+                "Nenhuma postagem válida encontrada "
+                "para o perfil %s.",
+                query_user,
+            )
+            return 1
+
+        output_path = (
+            output_dir
+            / (
+                f"{self.safe_filename(user)}"
+                "_posts.json"
             )
         )
 
-    except KwaiCommentsError as exc:
-        logger.error(
-            "Falha ao coletar comentários: %s",
-            exc,
+        self.save_json(
+            posts,
+            output_path,
         )
-        return 1
 
-    comentarios = (
-        normalizar_comentarios_fn(
-            comentarios_brutos,
-            postagem_url,
+        self.logger.info(
+            "Coleta do perfil concluída."
         )
-    )
 
-    arquivo_saida = (
-        output_dir
-        / f"{photo_id}_comentarios.json"
-    )
+        self.logger.info(
+            "Posts coletados: %d",
+            len(posts),
+        )
 
-    salvar_json_fn(
-        comentarios,
-        arquivo_saida,
-    )
+        self.logger.info(
+            "Arquivo salvo em: %s",
+            output_path,
+        )
 
-    logger.info(
-        "Coleta de comentários concluída."
-    )
+        return 0
 
-    logger.info(
-        "Comentários coletados: %d",
-        len(comentarios),
-    )
+    def _normalize_user(
+        self,
+        profile: str,
+    ) -> str | None:
+        try:
+            return self.clean_user(
+                profile
+            )
+        except ValueError as exc:
+            self.logger.error(
+                "%s",
+                exc,
+            )
+            return None
 
-    logger.info(
-        "Arquivo salvo em: %s",
-        arquivo_saida,
-    )
-
-    return 0
+    def _fetch_posts(
+        self,
+        user: str,
+        delay: float,
+    ) -> list[PostRaw] | None:
+        try:
+            return self.get_profile_posts(
+                user_id=user,
+                delay=delay,
+            )
+        except (
+            httpx.RequestError,
+            httpx.HTTPStatusError,
+            RuntimeError,
+        ) as exc:
+            self.logger.error(
+                "Falha ao coletar o perfil: %s",
+                exc,
+            )
+            return None

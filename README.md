@@ -1,48 +1,25 @@
-# Kwai Collector
+﻿# Kwai Collector
 
-Coletor de comentários públicos do Kwai desenvolvido em Python.
+Coletor de dados públicos do Kwai desenvolvido em Python, com foco em organização de código, tipagem estática, tratamento de falhas, paginação e testes automatizados.
 
-O projeto recebe a URL de uma postagem do Kwai, identifica automaticamente o `photo_id`, consulta o endpoint de comentários e salva os resultados em JSON.
+O projeto disponibiliza uma interface de linha de comando para:
 
-## Principais recursos
+- buscar postagens por palavra-chave;
+- coletar postagens públicas de um perfil;
+- coletar comentários principais de uma publicação;
+- executar coletas agregadas de postagens e comentários.
 
-- Recebe URL do Kwai diretamente
-- Extrai o `photo_id` automaticamente
-- Coleta até 20 comentários por postagem
-- Exibe os comentários no terminal
-- Salva o resultado em JSON
-- Aceita também o `photo_id` diretamente
-- Possui CLI própria
-- Código tipado com Mypy
-- Lint com Ruff
-- Testes automatizados com Pytest
+Os resultados são normalizados e armazenados em JSON.
 
 ---
 
-## Fluxo
-
-```text
-URL do Kwai
-    ↓
-extração automática do photo_id
-    ↓
-requisição HTTP
-    ↓
-comentários
-    ↓
-JSON
-```
-
-O fluxo principal funciona diretamente via HTTP.
-
-**Não é necessário conectar celular ou utilizar ADB.**
-
----
-
-# Tecnologias
+## Requisitos
 
 - Python 3.11+
 - Poetry
+
+Principais bibliotecas utilizadas:
+
 - HTTPX
 - Pydantic
 - Pydantic Settings
@@ -52,44 +29,9 @@ O fluxo principal funciona diretamente via HTTP.
 
 ---
 
-# Estrutura do projeto
+## Instalação
 
-```text
-kwai-project/
-├── kwai_collector/
-│   ├── clients/
-│   │   ├── comment_client.py
-│   │   ├── kwai_client.py
-│   │   ├── mobile_comment_client.py
-│   │   └── profile_client.py
-│   │
-│   ├── models/
-│   │   ├── comentario.py
-│   │   └── postagem.py
-│   │
-│   ├── parsers/
-│   │   ├── comment_parser.py
-│   │   ├── post_parser.py
-│   │   └── ui_comments.py
-│   │
-│   ├── providers/
-│   ├── cli.py
-│   └── config.py
-│
-├── tests/
-├── samples/
-├── .env.example
-├── .gitignore
-├── README.md
-├── poetry.lock
-└── pyproject.toml
-```
-
----
-
-# Instalação
-
-Clone o repositório:
+Clone o repositório e acesse a pasta do projeto:
 
 ```bash
 git clone <URL_DO_REPOSITORIO>
@@ -105,304 +47,488 @@ poetry install
 Verifique a CLI:
 
 ```bash
-kwai-collector --help
-```
-
-Saída esperada:
-
-```text
-usage: kwai-collector [-h] {buscar,comments,comentarios,perfil} ...
-
-Coletor de dados do Kwai
+poetry run kwai-collector --help
 ```
 
 ---
 
-# Coletar comentários
+## Uso
 
-## Usando uma URL
-
-```bash
-kwai-collector comments "https://m.kwai.com/photo/150001691804174/5253599077813406650"
-```
-
-A aplicação identifica automaticamente:
+A aplicação possui quatro comandos principais:
 
 ```text
-5253599077813406650
+buscar
+perfil
+comentarios
+coletar
 ```
 
-como `photo_id`.
+### Buscar postagens
 
-Exemplo de saída:
-
-```text
-INFO - Photo ID identificado: 5253599077813406650
-INFO - Total de comentários extraídos: 20
-INFO - 01. Usuario: Comentário...
-INFO - 02. Usuario: Comentário...
-...
-INFO - Resultados gerados em: samples\comentarios_tiny.json
-INFO - Execução concluída com sucesso.
-```
-
----
-
-## Usando somente o photo_id
-
-Também é possível informar diretamente o ID:
-
-```bash
-kwai-collector comments 5253599077813406650
-```
-
----
-
-## Definindo outro arquivo de saída
-
-```bash
-kwai-collector comments \
-  "https://m.kwai.com/photo/150001691804174/5253599077813406650" \
-  --output samples/meus_comentarios.json
-```
-
-No PowerShell:
+Busca postagens relacionadas a uma palavra-chave:
 
 ```powershell
-kwai-collector comments "https://m.kwai.com/photo/150001691804174/5253599077813406650" --output samples/meus_comentarios.json
+poetry run kwai-collector buscar "sertanejo" --delay 2
+```
+
+Também é possível coletar os comentários das postagens encontradas:
+
+```powershell
+poetry run kwai-collector buscar "sertanejo" `
+    --with-comments `
+    --max-comments todos `
+    --request-interval 2 `
+    --delay 2
+```
+
+Para limitar a quantidade de comentários por postagem:
+
+```powershell
+poetry run kwai-collector buscar "sertanejo" `
+    --with-comments `
+    --max-comments 50 `
+    --request-interval 2 `
+    --delay 2
 ```
 
 ---
 
-## Modo debug
+### Coletar postagens de um perfil
 
-Para visualizar informações adicionais da requisição:
+Coleta as postagens públicas disponíveis para um perfil:
 
-```bash
-kwai-collector comments 5253599077813406650 --debug
+```powershell
+poetry run kwai-collector perfil "henriqueejuliano" --delay 2
 ```
+
+O fluxo percorre as páginas disponíveis até o encerramento indicado pela fonte de dados e remove postagens duplicadas durante a coleta.
 
 ---
 
-# Formato da saída
+### Coletar comentários
 
-Exemplo simplificado:
+Recebe a URL de uma publicação e coleta seus comentários principais:
 
-```json
-[
-  {
-    "commentId": 215913794581299780,
-    "content": "Comentário de exemplo",
-    "commentTime": 1787967912575,
-    "userId": 150001761635871,
-    "userName": "Usuario",
-    "commentLikeCount": 12
-  }
-]
+```powershell
+poetry run kwai-collector comentarios `
+    "https://www.kwai.com/@stanleyribeiro/video/5205466849377747864" `
+    --max-comments 50 `
+    --request-interval 2
 ```
 
-O arquivo padrão é:
+Para seguir a paginação até o fim reconhecido:
+
+```powershell
+poetry run kwai-collector comentarios `
+    "https://www.kwai.com/@stanleyribeiro/video/5205466849377747864" `
+    --max-comments todos `
+    --request-interval 2
+```
+
+`--max-comments` aceita um inteiro positivo ou:
 
 ```text
-samples/comentarios_tiny.json
+todos
 ```
+
+O valor representa um limite máximo. Caso existam menos comentários disponíveis, a coleta termina com a quantidade encontrada.
+
+A contagem considera comentários principais.
 
 ---
 
-# Limite atual
+### Retomar uma coleta
 
-A versão atual coleta até:
+Durante uma coleta paginada, o progresso pode ser salvo em checkpoint.
 
-```text
-20 comentários por postagem
+Caso a execução seja interrompida:
+
+```powershell
+poetry run kwai-collector comentarios `
+    "https://www.kwai.com/@stanleyribeiro/video/5205466849377747864" `
+    --max-comments todos `
+    --request-interval 2 `
+    --resume
 ```
 
-A paginação de comentários não faz parte do escopo atual da entrega.
+A retomada:
 
-Pode ser adicionada futuramente sem alterar o fluxo principal da CLI.
+- utiliza o cursor salvo;
+- preserva comentários já coletados;
+- remove registros duplicados;
+- continua a partir do progresso disponível.
+
+Após uma conclusão bem-sucedida, o checkpoint correspondente é removido.
 
 ---
 
-# Outros comandos
+### Coleta agregada
 
-## Buscar postagens
+O comando `coletar` reúne postagens e comentários em uma única execução:
 
-```bash
-kwai-collector buscar "tecnologia"
+```powershell
+poetry run kwai-collector coletar `
+    "henriqueejuliano" `
+    --max-comments todos `
+    --request-interval 2 `
+    --delay 2
 ```
 
-Com mais páginas:
+Esse fluxo processa até 10 postagens por execução.
 
-```bash
-kwai-collector buscar "tecnologia" --paginas 3
-```
-
-Com delay:
-
-```bash
-kwai-collector buscar "tecnologia" --paginas 3 --delay 0.5
-```
+Para coletar somente as postagens disponíveis de um perfil, utilize `perfil`.
 
 ---
 
-## Coletar postagens de perfil
+## Fluxo de comentários
 
-```bash
-kwai-collector perfil "@usuario"
-```
+Para coletas maiores, retomadas ou paginação completa, o projeto utiliza uma abstração de preparação de requisições mobile.
 
-Com mais páginas:
+O código público não implementa mecanismos privados de autenticação da plataforma.
 
-```bash
-kwai-collector perfil "@usuario" --paginas 3
-```
+A preparação da requisição é delegada à interface `MobileRequestProvider`, permitindo utilizar uma integração autorizada sem acoplar o restante da aplicação ao mecanismo de autenticação.
 
----
-
-# Arquitetura
-
-O projeto separa as responsabilidades em módulos:
+Fluxo simplificado:
 
 ```text
 CLI
- │
- ├── Clients
- │     ├── Comment Client
- │     ├── Search Client
- │     └── Profile Client
- │
- ├── Parsers
- │
- ├── Models
- │
- └── Providers
+ |
+ v
+MobileCommentProvider
+ |
+ v
+MobileRequestProvider
+ |
+ v
+LiveCommentClient
+ |
+ v
+HTTP
+ |
+ v
+Parser
+ |
+ v
+JSON
 ```
-
-## Clients
-
-Responsáveis pelas requisições HTTP.
-
-## Parsers
-
-Responsáveis pela transformação dos dados recebidos.
-
-## Models
-
-Responsáveis pela estrutura e validação dos dados.
-
-## CLI
-
-Responsável pela interface de linha de comando.
-
-Essa separação evita concentrar toda a lógica em um único arquivo.
 
 ---
 
-# Testes
+## Configuração mobile
+
+Uma fonte autorizada de preparação de requisições pode ser configurada por variáveis de ambiente:
+
+```text
+KWAI_MOBILE_AUTH_ENDPOINT
+KWAI_MOBILE_AUTH_TOKEN
+KWAI_MOBILE_AUTH_TIMEOUT
+```
+
+Exemplo:
+
+```powershell
+$env:KWAI_MOBILE_AUTH_ENDPOINT = "http://localhost:8000/prepare"
+$env:KWAI_MOBILE_AUTH_TOKEN = "TOKEN_DO_SERVICO"
+```
+
+O token é utilizado somente para autenticar o coletor junto ao serviço configurado.
+
+Credenciais reais não devem ser versionadas.
+
+---
+
+## Campos adicionais
+
+Campos adicionais podem ser configurados para query, body e headers:
+
+```text
+KWAI_MOBILE_QUERY_FIELDS
+KWAI_MOBILE_BODY_FIELDS
+KWAI_MOBILE_HEADER_FIELDS
+```
+
+Os valores devem ser objetos JSON compostos por strings.
+
+Exemplo:
+
+```powershell
+$env:KWAI_MOBILE_QUERY_FIELDS = '{"language":"pt-br"}'
+$env:KWAI_MOBILE_BODY_FIELDS = '{"os":"android"}'
+$env:KWAI_MOBILE_HEADER_FIELDS = '{"Accept":"application/json"}'
+```
+
+Use somente dados e integrações para os quais exista autorização de acesso.
+
+---
+
+## Rate limit e retry
+
+O intervalo entre requisições pode ser controlado pela CLI:
+
+```text
+--request-interval 2
+```
+
+ou por configuração:
+
+```text
+KWAI_MOBILE_PAGE_DELAY
+```
+
+O projeto também possui retry com backoff para falhas temporárias.
+
+Variáveis disponíveis:
+
+```text
+KWAI_MAX_TENTATIVAS
+KWAI_BACKOFF_BASE
+```
+
+Exemplo:
+
+```powershell
+$env:KWAI_MAX_TENTATIVAS = "3"
+$env:KWAI_BACKOFF_BASE = "1"
+```
+
+Quando disponível, um cabeçalho `Retry-After` válido pode ser considerado antes de uma nova tentativa.
+
+---
+
+## Saídas
+
+Os arquivos são armazenados por padrão em:
+
+```text
+samples/
+```
+
+Exemplos:
+
+```text
+samples/busca_sertanejo.json
+samples/busca_sertanejo_comentarios.json
+samples/<usuario>_posts.json
+samples/<usuario>_comentarios.json
+samples/<photo_id>_comentarios.json
+```
+
+Durante uma coleta paginada também pode existir temporariamente:
+
+```text
+samples/<photo_id>_comentarios.coleta.json
+```
+
+Esse arquivo representa o checkpoint da coleta.
+
+---
+
+## Estrutura do projeto
+
+```text
+kwai-project/
+|
+|-- kwai_collector/
+|   |-- clients/
+|   |-- models/
+|   |-- parsers/
+|   |-- providers/
+|   |-- security/
+|   |-- cli.py
+|   |-- cli_builders.py
+|   |-- cli_collect.py
+|   |-- cli_commands.py
+|   |-- cli_comments.py
+|   |-- cli_parsers.py
+|   |-- cli_utils.py
+|   |-- config.py
+|   `-- keyword_comment_collection.py
+|
+|-- tests/
+|-- samples/
+|-- docs/
+|-- .env.example
+|-- .gitignore
+|-- README.md
+|-- poetry.lock
+`-- pyproject.toml
+```
+
+---
+
+## Arquitetura
+
+O projeto separa as principais responsabilidades da aplicação.
+
+### CLI
+
+Responsável por:
+
+- interpretação dos argumentos;
+- validação de entrada;
+- orquestração dos comandos;
+- mensagens e códigos de retorno.
+
+### Clients
+
+Responsáveis pela comunicação HTTP e obtenção dos dados brutos.
+
+### Providers
+
+Concentram abstrações relacionadas à coleta, preparação de requisições, rate limit e checkpoints.
+
+### Parsers
+
+Transformam as respostas recebidas em estruturas utilizadas pela aplicação.
+
+### Models
+
+Representam e validam os dados normalizados.
+
+Essa separação reduz acoplamento e facilita testes, manutenção e evolução do projeto.
+
+---
+
+## Exemplo de postagem normalizada
+
+```json
+{
+  "url": "https://www.kwai.com/@usuario/video/123",
+  "texto": "Texto da postagem",
+  "autor": {
+    "usuario": "usuario"
+  },
+  "engajamento": {
+    "curtidas": 100,
+    "comentarios": 20,
+    "visualizacoes": 5000
+  }
+}
+```
+
+---
+
+## Exemplo de comentário normalizado
+
+```json
+{
+  "id": "123456",
+  "postagem_url": "https://www.kwai.com/@usuario/video/123",
+  "autor": {
+    "usuario": "usuario",
+    "id": "987654"
+  },
+  "texto": "Comentário de exemplo",
+  "curtidas": 10,
+  "data": null,
+  "coletado_em": "2026-10-09T00:00:00+00:00"
+}
+```
+
+Campos que não estejam disponíveis na resposta original podem ser representados como `null`.
+
+---
+
+## Qualidade de código
+
+### Ruff
+
+```bash
+poetry run ruff check kwai_collector tests
+```
+
+### Mypy
+
+```bash
+poetry run mypy kwai_collector
+```
+
+### Pytest
+
+```bash
+poetry run pytest tests -q
+```
+
+Estado validado durante a preparação desta versão:
+
+```text
+Ruff: All checks passed
+Mypy: Success: no issues found
+Pytest: 168 passed
+```
+
+---
+
+## Testes
+
+A suíte utiliza mocks, providers falsos e transports controlados para não depender de chamadas reais à rede.
+
+Entre os comportamentos cobertos estão:
+
+- parsing;
+- paginação;
+- deduplicação;
+- retry;
+- backoff;
+- rate limit;
+- checkpoint;
+- retomada de coleta;
+- configuração;
+- CLI;
+- providers.
+
+Execução:
+
+```powershell
+poetry run pytest tests -q
+```
+
+---
+
+## Validação antes da entrega
 
 Execute:
 
-```bash
-pytest -q
+```powershell
+poetry run ruff check kwai_collector tests
+poetry run mypy kwai_collector
+poetry run pytest tests -q
+git diff --check
 ```
-
-Ou:
-
-```bash
-poetry run pytest -q
-```
-
----
-
-# Qualidade de código
-
-## Ruff
-
-```bash
-ruff check kwai_collector
-```
-
-## Mypy
-
-```bash
-mypy kwai_collector
-```
-
-## Pytest
-
-```bash
-pytest -q
-```
-
-Antes de uma entrega:
-
-```bash
-ruff check kwai_collector
-mypy kwai_collector
-pytest -q
-```
-
----
-
-# Exemplo rápido
-
-```bash
-poetry install
-```
-
-```bash
-kwai-collector comments "https://m.kwai.com/photo/150001691804174/5253599077813406650"
-```
-
-Resultado:
-
-```text
-URL
- ↓
-photo_id
- ↓
-20 comentários
- ↓
-samples/comentarios_tiny.json
-```
-
----
-
-# Status
-
-| Recurso | Status |
-|---|---|
-| Entrada por URL | ✅ |
-| Extração automática de photo_id | ✅ |
-| Entrada por photo_id | ✅ |
-| Comentários via HTTP | ✅ |
-| Até 20 comentários | ✅ |
-| Saída JSON | ✅ |
-| CLI `kwai-collector` | ✅ |
-| Busca por palavra-chave | ✅ |
-| Posts de perfil | ✅ |
-| Ruff | ✅ |
-| Mypy | ✅ |
-| Pytest | ✅ |
-| Paginação de comentários | 🔜 |
-
----
-
-# Objetivo
-
-Este projeto foi desenvolvido como desafio técnico, com foco em:
-
-- integração HTTP;
-- organização de código;
-- CLI;
-- tipagem estática;
-- testes automatizados;
-- tratamento de dados;
-- versionamento com Git;
-- qualidade de software.
 
 ---
 
 ## Uso responsável
 
-O uso do projeto deve respeitar as regras da plataforma, as permissões de acesso aos dados e a legislação aplicável.
+O projeto foi desenvolvido como desafio técnico, com foco em engenharia de software aplicada à coleta de dados públicos.
+
+Seu uso deve respeitar:
+
+- termos e regras da plataforma;
+- permissões de acesso;
+- privacidade dos usuários;
+- limites de requisição;
+- legislação aplicável.
+
+Utilize somente dados e integrações que você esteja autorizado a acessar.
+
+---
+
+## Objetivo técnico
+
+O projeto demonstra conhecimentos em:
+
+- Python;
+- HTTP e APIs;
+- coleta e tratamento de dados;
+- web scraping;
+- paginação;
+- retry e backoff;
+- CLI;
+- Pydantic;
+- tipagem estática;
+- testes automatizados;
+- Clean Code;
+- Git e versionamento.
+
+O foco principal é manter uma base de código legível, testável e preparada para evolução.

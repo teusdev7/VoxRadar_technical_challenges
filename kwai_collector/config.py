@@ -28,6 +28,12 @@ class Settings(BaseSettings):
         ge=0,
     )
 
+    mobile_page_delay: float = Field(
+        default=2.0,
+        ge=0,
+        allow_inf_nan=False,
+    )
+
     cookie: str | None = None
 
     adb_path: str = "adb"
@@ -39,6 +45,43 @@ class Settings(BaseSettings):
     max_comment_scrolls: int = Field(
         default=100,
         ge=1,
+    )
+
+    mobile_query_fields: dict[str, str] = Field(
+        default_factory=dict,
+    )
+
+    mobile_body_fields: dict[str, str] = Field(
+        default_factory=dict,
+    )
+
+    mobile_header_fields: dict[str, str] = Field(
+        default_factory=dict,
+    )
+
+    # Endpoint opcional de um serviço autorizado
+    # responsável por preparar a requisição mobile.
+    #
+    # Variável de ambiente:
+    # KWAI_MOBILE_AUTH_ENDPOINT
+    mobile_auth_endpoint: str | None = None
+
+    # Token opcional usado exclusivamente para
+    # autenticar o Python junto ao serviço acima.
+    #
+    # Variável de ambiente:
+    # KWAI_MOBILE_AUTH_TOKEN
+    mobile_auth_token: str | None = None
+
+    # Timeout da comunicação com o serviço de
+    # preparação/autenticação mobile.
+    #
+    # Variável de ambiente:
+    # KWAI_MOBILE_AUTH_TIMEOUT
+    mobile_auth_timeout: float = Field(
+        default=15.0,
+        gt=0,
+        allow_inf_nan=False,
     )
 
 

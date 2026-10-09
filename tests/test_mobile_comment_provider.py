@@ -41,9 +41,7 @@ def test_mobile_comment_provider_lê_uma_pagina(
         arquivo_json=arquivo,
     )
 
-    comentarios = provider.get_comments(
-        "https://www.kwai.com/@teste/video/123"
-    )
+    comentarios = provider.get_comments("https://www.kwai.com/@teste/video/123")
 
     assert len(comentarios) == 2
     assert comentarios[0].id == "1"
@@ -99,14 +97,9 @@ def test_mobile_comment_provider_lê_varias_paginas(
         arquivo_json=arquivo,
     )
 
-    comentarios = provider.get_comments(
-        "https://www.kwai.com/@teste/video/123"
-    )
+    comentarios = provider.get_comments("https://www.kwai.com/@teste/video/123")
 
-    assert [
-        comentario.id
-        for comentario in comentarios
-    ] == [
+    assert [comentario.id for comentario in comentarios] == [
         "1",
         "2",
     ]
@@ -163,11 +156,9 @@ def test_mobile_comment_provider_deduplica_comentarios(
         arquivo_json=arquivo,
     )
 
-    comentarios = provider.get_comments(
-        "https://www.kwai.com/@teste/video/123"
-    )
+    comentarios = provider.get_comments("https://www.kwai.com/@teste/video/123")
 
-    assert [
-        comentario.id
-        for comentario in comentarios
-    ] == ["1","2",]
+    assert [comentario.id for comentario in comentarios] == [
+        "1",
+        "2",
+    ]
