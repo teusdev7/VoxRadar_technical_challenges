@@ -1,6 +1,6 @@
 ﻿# Kwai Collector
 
-Coletor de dados públicos do Kwai desenvolvido em Python, com foco em organização de código, tipagem estática, tratamento de falhas, paginação e testes automatizados.
+CLI em Python para coletar dados públicos do Kwai, com paginação, controle de frequência e recuperação de falhas.
 
 O projeto disponibiliza uma interface de linha de comando para:
 
@@ -9,7 +9,7 @@ O projeto disponibiliza uma interface de linha de comando para:
 - coletar comentários principais de uma publicação;
 - executar coletas agregadas de postagens e comentários.
 
-Os resultados são normalizados e armazenados em JSON.
+A CLI grava os resultados em JSON.
 
 ---
 
@@ -49,6 +49,18 @@ Verifique a CLI:
 ```bash
 poetry run kwai-collector --help
 ```
+
+O pacote inclui um assinador local para comentários paginados. Sem endpoint de assinatura configurado, coletas com `--max-comments 50` ou `todos` usam esse provider automaticamente, sem exigir `.env`, token ou serviço adicional.
+
+Em 9 de outubro de 2026, os fluxos abaixo foram validados com o wheel isolado em outra pasta, sem variáveis `KWAI_*`, `.env`, cookies ou credenciais salvos:
+
+| Validação | Resultado |
+| --- | --- |
+| [Postagem individual](docs/validations/clone_sem_configuracao_2026-10-09.json) | 50 comentários com limite 50; 88 com `todos` |
+| [Perfil e busca](docs/validations/fluxos_sem_configuracao_2026-10-09.json) | 191 posts únicos de `henriqueejuliano`; 1.116 comentários em dez posts com `todos`; 1.475 em 50 posts de `sertanejo`, limitados a 50 por post; coletas sem erros por postagem |
+| [Busca com `todos`](docs/validations/busca_sertanejo_todos_sem_configuracao_2026-10-09.json) | 8.893 comentários principais únicos nos 50 posts retornados, após recuperação |
+
+A listagem de 191 posts terminou por cursor repetido; não comprova esgotamento do histórico. Na busca com `todos`, o comando inicial falhou, e comandos individuais de `comentarios` concluíram os posts pendentes. O relatório preserva essa falha: o resultado final foi validado após recuperação, e não por uma única execução bem-sucedida de `buscar`. Os critérios e limites das evidências estão na [documentação técnica](docs/COLETA_COMENTARIOS.md#183-validação-sem-configuração).
 
 ---
 
@@ -101,7 +113,7 @@ Coleta as postagens públicas disponíveis para um perfil:
 poetry run kwai-collector perfil "henriqueejuliano" --delay 2
 ```
 
-O fluxo percorre as páginas disponíveis até o encerramento indicado pela fonte de dados e remove postagens duplicadas durante a coleta.
+O fluxo percorre as páginas disponíveis e remove postagens duplicadas. Encerra quando o cliente reconhece o término ou a repetição de um cursor.
 
 ---
 
@@ -151,12 +163,7 @@ poetry run kwai-collector comentarios `
     --resume
 ```
 
-A retomada:
-
-- utiliza o cursor salvo;
-- preserva comentários já coletados;
-- remove registros duplicados;
-- continua a partir do progresso disponível.
+A retomada preserva os comentários recebidos, aplica deduplicação e continua pelo cursor salvo.
 
 Após uma conclusão bem-sucedida, o checkpoint correspondente é removido.
 
@@ -182,11 +189,11 @@ Para coletar somente as postagens disponíveis de um perfil, utilize `perfil`.
 
 ## Fluxo de comentários
 
-Para coletas maiores, retomadas ou paginação completa, o projeto utiliza uma abstração de preparação de requisições mobile.
+Coletas paginadas e retomadas utilizam a interface de preparação de requisições mobile.
 
-O código público não implementa mecanismos privados de autenticação da plataforma.
+O provider padrão calcula `sig` e `__NS_sig3` localmente para `POST /rest/o/comment/list/v2`, usando a implementação compatível com `kwai.lite.video` versão `10.3.20.540101`. O material fixo necessário está incluído no pacote e é verificado por SHA-256. Android, APK, Frida e serviços externos de assinatura não são necessários na execução.
 
-A preparação da requisição é delegada à interface `MobileRequestProvider`, permitindo utilizar uma integração autorizada sem acoplar o restante da aplicação ao mecanismo de autenticação.
+A CLI compõe o assinador local e o injeta pelo protocolo `MobileRequestProvider`. A factory genérica também aceita providers alternativos; uma integração explicitamente configurada pode substituir o provider local.
 
 Fluxo simplificado:
 
@@ -214,9 +221,9 @@ JSON
 
 ---
 
-## Configuração mobile
+## Configuração mobile opcional
 
-Uma fonte autorizada de preparação de requisições pode ser configurada por variáveis de ambiente:
+O uso padrão dos comentários paginados funciona sem estas variáveis. Para substituir o assinador local por um serviço autorizado, configure:
 
 ```text
 KWAI_MOBILE_AUTH_ENDPOINT
@@ -233,6 +240,8 @@ $env:KWAI_MOBILE_AUTH_TOKEN = "TOKEN_DO_SERVICO"
 
 O token é utilizado somente para autenticar o coletor junto ao serviço configurado.
 
+Se `KWAI_MOBILE_AUTH_ENDPOINT` estiver definido, a CLI usa essa configuração explícita. Sem esse endpoint, seleciona o assinador local.
+
 Credenciais reais não devem ser versionadas.
 
 ---
@@ -248,6 +257,8 @@ KWAI_MOBILE_HEADER_FIELDS
 ```
 
 Os valores devem ser objetos JSON compostos por strings.
+
+Esses campos são opcionais. Os defaults de protocolo do provider local já correspondem à versão suportada; uma configuração incompatível de `pkg` ou `appver` é rejeitada. Não salvar controles variáveis de postagem/página nesses templates.
 
 Exemplo:
 
@@ -275,7 +286,7 @@ ou por configuração:
 KWAI_MOBILE_PAGE_DELAY
 ```
 
-O projeto também possui retry com backoff para falhas temporárias.
+Falhas de rede e respostas HTTP configuradas como recuperáveis têm retry com backoff.
 
 Variáveis disponíveis:
 
@@ -291,7 +302,7 @@ $env:KWAI_MAX_TENTATIVAS = "3"
 $env:KWAI_BACKOFF_BASE = "1"
 ```
 
-Quando disponível, um cabeçalho `Retry-After` válido pode ser considerado antes de uma nova tentativa.
+O cliente mobile respeita um `Retry-After` válido antes da próxima chamada.
 
 ---
 
@@ -320,6 +331,8 @@ samples/<photo_id>_comentarios.coleta.json
 ```
 
 Esse arquivo representa o checkpoint da coleta.
+
+Dados coletados em `samples/`, JSONs de comentários, checkpoints e backups não entram no commit de entrega. Os artefatos de validação versionáveis são relatórios estatísticos sem textos de comentários ou credenciais e fixtures de teste revisadas.
 
 ---
 
@@ -385,7 +398,9 @@ Transformam as respostas recebidas em estruturas utilizadas pela aplicação.
 
 Representam e validam os dados normalizados.
 
-Essa separação reduz acoplamento e facilita testes, manutenção e evolução do projeto.
+O ponto de composição da CLI escolhe a factory local e injeta a implementação pelo protocolo `MobileRequestProvider`. A interface da factory genérica permanece disponível para testes e integrações alternativas. Os testes do provider padrão e das assinaturas verificam essa composição e os vetores de referência; o material empacotado tem sua integridade conferida por SHA-256.
+
+Pacote, versão e User-Agent derivam das constantes do signer; os componentes compartilham a rota do endpoint. A composição preserva serviços explicitamente injetados mesmo quando sua avaliação booleana é falsa, com teste de regressão. Os algoritmos e o material binário foram preservados.
 
 ---
 
@@ -454,7 +469,7 @@ Estado validado durante a preparação desta versão:
 ```text
 Ruff: All checks passed
 Mypy: Success: no issues found
-Pytest: 168 passed
+Pytest: 232 passed
 ```
 
 ---
@@ -500,7 +515,7 @@ git diff --check
 
 ## Uso responsável
 
-O projeto foi desenvolvido como desafio técnico, com foco em engenharia de software aplicada à coleta de dados públicos.
+O projeto foi desenvolvido como desafio técnico de coleta de dados públicos.
 
 Seu uso deve respeitar:
 
@@ -516,19 +531,4 @@ Utilize somente dados e integrações que você esteja autorizado a acessar.
 
 ## Objetivo técnico
 
-O projeto demonstra conhecimentos em:
-
-- Python;
-- HTTP e APIs;
-- coleta e tratamento de dados;
-- web scraping;
-- paginação;
-- retry e backoff;
-- CLI;
-- Pydantic;
-- tipagem estática;
-- testes automatizados;
-- Clean Code;
-- Git e versionamento.
-
-O foco principal é manter uma base de código legível, testável e preparada para evolução.
+A entrega separa comandos, comunicação HTTP, preparação de requisições, persistência e contratos de saída. A [documentação técnica](docs/COLETA_COMENTARIOS.md) descreve o comportamento implementado, os testes e as limitações observadas.

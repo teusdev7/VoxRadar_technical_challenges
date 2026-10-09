@@ -63,6 +63,9 @@ from kwai_collector.providers.comment_checkpoint import (
 from kwai_collector.providers.mobile_comment_provider import (
     MobileCommentProvider,
 )
+from kwai_collector.security.local_comment_request_provider import (
+    criar_local_comment_request_provider,
+)
 from kwai_collector.security.mobile_request_provider_factory import (
     criar_mobile_request_provider,
 )
@@ -94,6 +97,14 @@ CommandHandler = Callable[
 
 
 def _criar_auth_provider_mobile() -> MobileRequestProvider:
+    if not settings.mobile_auth_endpoint:
+        return criar_mobile_request_provider(
+            delegate=criar_local_comment_request_provider(
+                query_fields=settings.mobile_query_fields,
+                body_fields=settings.mobile_body_fields,
+                header_fields=settings.mobile_header_fields,
+            ),
+        )
     return criar_mobile_request_provider(
         query_fields=settings.mobile_query_fields,
         body_fields=settings.mobile_body_fields,

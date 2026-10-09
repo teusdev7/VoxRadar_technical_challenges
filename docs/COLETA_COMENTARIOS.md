@@ -2,7 +2,7 @@
 
 **Projeto:** Kwai Collector
 **Versão do pacote:** 0.1.0
-**Revisão da documentação:** 2.0
+**Revisão da documentação:** 2.1
 **Referência:** 9 de outubro de 2026
 **Identificador da entrega:** `A1_Radar`
 
@@ -10,9 +10,9 @@
 
 ## 1. Visão geral
 
-O Kwai Collector é uma aplicação Python voltada à coleta e normalização de dados públicos, com interface de linha de comando, paginação, controle de frequência, recuperação de falhas e testes automatizados.
+O Kwai Collector é uma CLI Python para coletar e normalizar dados públicos, com paginação, controle de frequência, recuperação de falhas e testes automatizados.
 
-A implementação foi estruturada para separar claramente:
+A implementação separa:
 
 - entrada e validação da CLI;
 - casos de uso;
@@ -26,11 +26,7 @@ A implementação foi estruturada para separar claramente:
 - modelos de domínio;
 - configuração.
 
-A coleta de comentários trabalha atualmente com **comentários principais** de uma publicação.
-
-Respostas e subcomentários não fazem parte do contrato da versão atual.
-
-Essa decisão é de escopo, e não uma limitação estrutural definitiva. A arquitetura permite incorporar esse recurso futuramente através de um fluxo específico de coleta, parser e normalização, preservando o contrato atual dos comentários principais.
+A coleta retorna **comentários principais** de uma publicação. Respostas e subcomentários estão fora do contrato desta versão; seu suporte exigiria um fluxo e um contrato próprios.
 
 ---
 
@@ -56,13 +52,16 @@ A versão atual possui suporte para:
 | Saída JSON normalizada | Implementado |
 | Configuração tipada | Implementado |
 | Integração mobile por provider | Implementado |
-| Subcomentários/respostas | Planejado para evolução futura |
+| Assinatura local padrão sem serviço adicional | Implementado e validado em execução real sem configuração |
+| Subcomentários/respostas | Não implementado |
 
 ---
 
 ## 3. Compatibilidade
 
-O projeto foi construído com alta compatibilidade entre os diferentes fluxos que compõem a coleta.
+Os fluxos de busca, perfil e comentários compartilham componentes de coleta e contratos de saída.
+
+O assinador local de comentários é específico de `kwai.lite.video` versão `10.3.20.540101` e de `POST /rest/o/comment/list/v2`. A compatibilidade da arquitetura não significa que esse cálculo possa ser utilizado em qualquer versão ou endpoint.
 
 A lógica de domínio não depende diretamente de uma implementação específica de autenticação, transporte ou origem dos dados.
 
@@ -131,8 +130,6 @@ modelo
  v
 JSON
 ```
-
-Essa separação reduz acoplamento e facilita manutenção, testes e adaptação a mudanças futuras.
 
 A compatibilidade descrita nesta documentação refere-se aos contratos e cenários atualmente validados. Mudanças externas na plataforma podem exigir atualização da camada de integração.
 
@@ -211,7 +208,11 @@ A organização atual prioriza:
 
 A CLI não concentra regras de protocolo ou paginação.
 
-Da mesma forma, o cliente HTTP não decide como o resultado deve ser apresentado ao usuário.
+O cliente HTTP não decide como apresentar o resultado ao usuário.
+
+A CLI é o ponto de composição: seleciona a factory local e injeta sua implementação pelo protocolo `MobileRequestProvider`. A factory genérica mantém a interface para providers alternativos. Essa composição é coberta pelos [testes do provider padrão](../tests/test_default_local_signer.py); os [testes de sig](../tests/test_kwai_lite_103_offline_signer.py) e [sig3](../tests/test_kwai_lite_103_offline_sig3_signer.py) usam vetores de referência. O material empacotado é validado por SHA-256 no carregamento.
+
+Pacote, versão e User-Agent derivam das constantes do signer, e os componentes compartilham a rota do endpoint. Um serviço explicitamente injetado é preservado mesmo quando `bool(service)` é falso; esse comportamento tem teste de regressão. Essas alterações preservam os algoritmos e o material binário.
 
 ---
 
@@ -296,11 +297,7 @@ Campos indisponíveis na origem podem ser representados como `null` quando permi
 
 Subcomentários não são coletados nesta versão.
 
-Essa decisão mantém o contrato atual simples e evita misturar dois tipos de entidade com relações hierárquicas diferentes.
-
-Uma futura implementação poderá adicionar suporte a respostas sem alterar o contrato já utilizado pelos comentários principais.
-
-A evolução prevista é:
+Uma implementação de respostas deverá definir sua relação com o comentário principal e um contrato explícito de saída:
 
 ```text
 comentário principal
@@ -329,7 +326,7 @@ A extensão deverá possuir:
 - testes específicos;
 - modelo de relacionamento com o comentário raiz.
 
-Com isso, alterações futuras poderão incluir subcomentários preservando compatibilidade com consumidores da saída atual.
+O contrato atual de comentários principais deve ser preservado nessa extensão.
 
 ---
 
@@ -373,7 +370,7 @@ Para evitar duplicidade na saída, o fluxo mantém controle dos identificadores 
 
 A primeira ocorrência é preservada.
 
-O objetivo é garantir que paginação ou repetição de cursor não resultem automaticamente em duplicatas no resultado normalizado.
+Esse controle evita exportar novamente um ID recebido em outra página.
 
 ---
 
@@ -399,7 +396,7 @@ KWAI_MOBILE_PAGE_DELAY
 
 O controle de frequência é aplicado pelo cliente responsável pelas chamadas mobile.
 
-Isso evita espalhar chamadas diretas a `sleep` pelas regras de negócio.
+O cliente concentra a espera necessária entre chamadas mobile.
 
 ---
 
@@ -414,13 +411,13 @@ KWAI_MAX_TENTATIVAS
 KWAI_BACKOFF_BASE
 ```
 
-O backoff cresce entre tentativas e possui limite interno para evitar esperas exponenciais sem controle.
+O backoff cresce entre tentativas até o limite interno.
 
-Quando o servidor fornece um `Retry-After` válido, o cliente pode respeitar o prazo informado.
+Quando o servidor fornece um `Retry-After` válido, o cliente respeita o prazo informado.
 
 Erros não classificados como transitórios não entram automaticamente em retry.
 
-Essa diferenciação evita mascarar problemas permanentes de entrada, autenticação ou contrato.
+Erros de entrada, autenticação ou contrato exigem análise antes de repetir a operação.
 
 ---
 
@@ -475,7 +472,7 @@ O limite solicitado inclui os registros anteriormente recuperados.
 
 ## 15. Recuperação de falhas
 
-Uma falha durante paginação não precisa invalidar todo o trabalho anterior.
+Uma falha de paginação pode preservar o progresso recebido.
 
 Quando possível, o fluxo preserva:
 
@@ -484,7 +481,7 @@ Quando possível, o fluxo preserva:
 - checkpoint;
 - saída parcial.
 
-Isso torna coletas longas mais resilientes e reduz a necessidade de reiniciar todo o processo.
+O checkpoint permite retomar o progresso preservado sem iniciar a listagem novamente.
 
 ---
 
@@ -514,11 +511,7 @@ poetry run kwai-collector coletar `
     --delay 2
 ```
 
-Esse fluxo foi deliberadamente limitado a até 10 postagens por execução.
-
-O limite reduz o impacto operacional de uma coleta agregada potencialmente extensa.
-
-Portanto:
+Esse fluxo processa até 10 postagens por execução:
 
 ```text
 perfil   -> coleta das postagens disponíveis
@@ -563,6 +556,32 @@ A coleta de comentários reutiliza os mesmos componentes responsáveis por pagin
 
 O pacote público trabalha com uma abstração de preparação de requisições.
 
+### 18.1 Provider local padrão
+
+Para limites acima de 20, `todos` e retomadas, a CLI seleciona automaticamente um provider local quando não existe `KWAI_MOBILE_AUTH_ENDPOINT`. O comando de busca com comentários utiliza a mesma composição. A instalação inclui os algoritmos e o material fixo, permitindo execução sem `.env`, token de sessão configurado, Android ou serviço adicional de assinatura.
+
+```text
+CLI (composição)
+    → criar_local_comment_request_provider
+    → CommentListV2RequestProvider
+    → KwaiLite103CommentListV2Signer
+    → sig + tokensig opcional + sig3
+    → factory genérica com delegate
+    → perfil mobile e timestamp por chamada
+    → LiveCommentClient
+    → API do Kwai
+```
+
+Na execução, o wrapper aplica o perfil antes de delegar a preparação e a assinatura. O diagrama identifica a composição dos objetos; o timestamp é recalculado para cada tentativa de requisição.
+
+Referências: [composição do provider local](../kwai_collector/security/local_comment_request_provider.py), [assinador composto](../kwai_collector/security/comment_list_v2_signer.py) e [implementação de sig3](../kwai_collector/security/kwai_lite_103_offline_sig3_signer.py).
+
+O cálculo de `sig` ordena os pares completos `chave=valor` como Java, concatena sem separadores e aplica MD5 aos bytes UTF-8 acrescidos do sufixo da versão. Quando existe `client_salt`, tokensig é SHA-256 de `sig + client_salt`. `sig3` combina método, caminho, parâmetros e nonce; reproduz HMAC-SHA256, criptografia por tabelas, CRC32, registro com contexto/contador/tempo e wrapper Base64 URL-safe.
+
+As tabelas estão em `kwai_lite_103_sig3_material.bin`, com 151.616 bytes, incluídas explicitamente no wheel e sdist. A integridade do arquivo é conferida por SHA-256. Esse material fixo não contém a sessão, os cookies ou os tokens do desenvolvedor.
+
+### 18.2 Integração externa opcional
+
 Uma integração autorizada pode ser configurada através de:
 
 ```text
@@ -579,9 +598,85 @@ KWAI_MOBILE_BODY_FIELDS
 KWAI_MOBILE_HEADER_FIELDS
 ```
 
-O projeto não exige que a regra de autenticação esteja incorporada à camada de coleta.
+O provider prepara a requisição; a camada de coleta consome a interface resultante.
 
-Essa decisão mantém o código de negócio desacoplado da origem da autorização.
+Essas variáveis são opcionais para o fluxo padrão. Se o endpoint externo estiver explicitamente configurado, ele substitui o provider local. A factory continua aceitando um `MobileRequestProvider` injetado, preservando a arquitetura refatorada e os testes de providers alternativos.
+
+### 18.3 Validação sem configuração
+
+Em 9 de outubro de 2026, o wheel construído a partir desta implementação foi extraído em um diretório isolado, com outra pasta de trabalho. O teste removeu variáveis `KWAI_*`, confirmou ausência de `.env`, endpoint, token, cookie e templates configurados, e verificou que o módulo importado pertencia ao pacote isolado.
+
+| Comando | Saída | IDs únicos | Código de saída |
+| --- | ---: | ---: | ---: |
+| `comentarios <URL> --max-comments 50 --request-interval 2` | 50 comentários | 50 | 0 |
+| `comentarios <URL> --max-comments todos --request-interval 2` | 88 comentários | 88 | 0 |
+
+Ambos usaram a postagem pública `5257539724123961717` de `henriqueejuliano`. Os checkpoints foram removidos após a conclusão. A consulta inicial independente também confirmou duas páginas de 20 comentários com HTTP 200 e `result=1`, sem credenciais salvas.
+
+O [relatório de validação](validations/clone_sem_configuracao_2026-10-09.json) registra os resultados, a ausência de configuração e os hashes do wheel e do material fixo. Esse teste demonstra o comportamento real na data registrada; a disponibilidade e as respostas futuras continuam dependentes da plataforma.
+
+### 18.4 Validação real dos comandos de perfil e busca
+
+Os três comandos seguintes também foram executados com o wheel isolado em outra pasta de trabalho, sem `.env`, variáveis `KWAI_*`, token ou cookie salvo. O intervalo configurado foi de dois segundos. A consulta de perfil e a busca utilizaram os endpoints públicos; a coleta de comentários utilizou o provider local padrão.
+
+```powershell
+poetry run kwai-collector perfil "henriqueejuliano" --delay 2
+
+poetry run kwai-collector coletar "henriqueejuliano" --max-comments todos --request-interval 2 --delay 2
+
+poetry run kwai-collector buscar "sertanejo" --with-comments --max-comments 50 --request-interval 2 --delay 2
+```
+
+Cada execução recebeu uma pasta de saída própria para permitir conferência independente dos arquivos.
+
+| Fluxo | Posts processados | Comentários principais únicos | Código de saída | Erros de comentários |
+| --- | ---: | ---: | ---: | ---: |
+| Listagem de perfil | 191 | Não aplicável | 0 | Não aplicável |
+| Perfil com `todos` | 10 | 1.116 | 0 | 0 |
+| Busca com limite 50 por post | 50 | 1.475 | 0 | 0 |
+
+A conferência não usou somente o código de saída. Ela confirmou que as quantidades por postagem correspondem ao tamanho das listas, que as somas correspondem aos totais declarados, que os IDs de comentários são únicos por post e também nos dois agregados, e que não existem registros `erro` ou checkpoints pendentes nas coletas de comentários.
+
+Na coleta dos dez posts, os detalhes também foram obtidos sem `erro_detalhes`. As quantidades foram `[11, 5, 18, 35, 30, 13, 87, 52, 350, 515]`, cuja soma é 1.116. Esse é o resultado desta consulta, distinto dos 1.119 registrados em uma execução anterior.
+
+A busca encontrou cinquenta posts e processou todos eles. Nenhuma lista final excedeu cinquenta comentários. Três posts retornaram zero comentários disponíveis; os demais produziram um total agregado de 1.475. O arquivo agregado declarou `complete=true`, e os arquivos individuais coincidiram com as listas do agregado.
+
+A listagem do perfil terminou com um aviso de **cursor repetido**. Portanto, 191 é a quantidade de posts únicos recebidos até esse critério de encerramento, e não uma comprovação de esgotamento de todo o histórico.
+
+O post `5257539724123961717` retornou 88 comentários principais únicos na validação individual descrita na seção anterior e 87 no agregado posterior. Os arquivos demonstram a diferença de retorno; não permitem determinar sua causa. O limite `todos` segue a paginação disponível e não fixa uma quantidade permanente para uma postagem.
+
+O [relatório dos três fluxos](validations/fluxos_sem_configuracao_2026-10-09.json) registra o hash do mesmo wheel validado, os argumentos, as quantidades, os critérios conferidos e a ausência de configuração de sessão. Nenhum resultado dessas tabelas foi produzido por `MockTransport`.
+
+### 18.5 Busca por palavra-chave com todos os comentários principais
+
+Foi executado o comando abaixo com o mesmo wheel isolado, sem `.env`, configuração `KWAI_*`, cookies, tokens salvos ou serviço externo de assinatura:
+
+```powershell
+poetry run kwai-collector buscar "sertanejo" --with-comments --max-comments todos --request-interval 2 --delay 2
+```
+
+A busca retornou cinquenta posts. O teste conservou essa seleção para a coleta inicial e todas as recuperações. Uma nova busca pode retornar outros posts; por isso, o total não deve ser comparado diretamente aos 1.475 comentários do teste anterior como se as duas amostras fossem iguais.
+
+| Verificação do resultado final | Resultado |
+| --- | ---: |
+| Posts processados | 50 |
+| Comentários principais | 8.893 |
+| IDs únicos de comentários no agregado | 8.893 |
+| Posts com mais de 50 comentários | 20 |
+| Maior quantidade em um post | 1.884 |
+| Posts sem comentários retornados | 4 |
+| Erros pendentes de comentários | 0 |
+| Checkpoints pendentes na pasta de coleta | 0 |
+
+A execução inicial **não terminou com sucesso em um único comando**. Uma postagem foi registrada com `ValueError` depois de 1.840 comentários preservados no checkpoint; posteriormente, um `OSError` interrompeu o comando ao chegar ao post 41. O agregado inicial continha quarenta registros e 5.445 comentários. As causas exatas dessas exceções não foram capturadas, e a retomada não as reproduziu.
+
+O comando `comentarios` com `--resume` concluiu a postagem pendente com 1.884 comentários. Os posts 41 a 50 foram concluídos com comandos individuais da CLI, mantendo `--max-comments todos` e o intervalo de dois segundos. O checkpoint do post 41 já indicava término sem comentários e permitiu retomada sem outra requisição. Todos os comandos de recuperação terminaram com código zero.
+
+Um script auxiliar de validação reuniu os arquivos individuais no agregado final, mantendo cópias do agregado e do relatório originais. Essa recomposição foi parte do teste; não acrescenta retomada automática ao comando `buscar`. Não houve alteração do código de produção nesta validação.
+
+A conferência confirmou a seleção de cinquenta IDs de posts, limite de comentários `null`, quantidades correspondentes às listas, soma total, IDs únicos, igualdade entre arquivos individuais e agregado, `complete=true` e ausência de checkpoints pendentes. Os logs iniciais registraram 401 páginas salvas, com múltiplas páginas em 21 posts. Foram coletados somente comentários principais; a conclusão segue os cursores reconhecidos pelo cliente, sem comprovar igualdade com os contadores públicos ou incluir subcomentários.
+
+O [relatório da busca com `todos`](validations/busca_sertanejo_todos_sem_configuracao_2026-10-09.json) mantém `initial_run.exit_code=1`, `single_keyword_command_succeeded=false` e `recovery_exit_code=0`. O estado `recovered_completed` indica que o resultado final foi conferido após as retomadas.
 
 ---
 
@@ -598,6 +693,8 @@ O arquivo:
 deve permanecer fora do Git.
 
 O repositório público deve utilizar apenas exemplos sem valores reais.
+
+Dados coletados em `samples/`, JSONs de comentários, checkpoints e backups não entram no commit de entrega. Os artefatos de validação versionáveis limitam-se a relatórios estatísticos sem textos de comentários ou credenciais e fixtures de teste revisadas.
 
 Também não devem ser publicados:
 
@@ -665,7 +762,7 @@ São utilizados:
 - fixtures;
 - dependências injetadas.
 
-Isso permite testar determinísticamente situações como:
+Os testes verificam de forma determinística:
 
 - múltiplas páginas;
 - fim de paginação;
@@ -691,10 +788,10 @@ Ruff
 All checks passed!
 
 Mypy
-Success: no issues found in 49 source files
+Success: no issues found in 59 source files
 
 Pytest
-168 passed
+232 passed
 ```
 
 Comandos utilizados:
@@ -732,7 +829,7 @@ falha depois de páginas válidas
         -> preservação de progresso quando possível
 ```
 
-Evitar tratar todos os erros da mesma maneira torna o comportamento da aplicação mais previsível.
+Cada categoria determina se a operação pode repetir a chamada, preservar progresso ou encerrar.
 
 ---
 
@@ -755,9 +852,7 @@ Dados sensíveis não devem fazer parte de logs públicos.
 
 ## 26. Escalabilidade e evolução
 
-A arquitetura atual permite evolução incremental.
-
-Extensões previstas podem incluir:
+As extensões abaixo dependem de implementação e testes próprios:
 
 ### Subcomentários
 
@@ -791,19 +886,7 @@ Novos providers podem ser incorporados sem alterar os casos de uso principais.
 
 ## 27. Decisão sobre subcomentários
 
-A versão atual não retorna respostas de comentários.
-
-A decisão foi mantida para preservar:
-
-1. escopo claro da entrega;
-2. consistência do contrato;
-3. paginação previsível;
-4. menor acoplamento entre entidades;
-5. testabilidade.
-
-O suporte futuro a subcomentários deve ser implementado como uma evolução compatível.
-
-A alteração ideal adicionará uma nova responsabilidade sem modificar silenciosamente a semântica de:
+A versão atual não retorna respostas de comentários. Uma extensão para subcomentários deve possuir contrato e testes próprios, sem modificar a semântica de:
 
 ```text
 --max-comments
@@ -823,27 +906,21 @@ mantendo consumidores atuais compatíveis com o formato já entregue.
 
 ## 28. Limitações conhecidas
 
-Uma documentação técnica deve distinguir comportamento implementado de garantia externa.
-
 As limitações atuais incluem:
 
 - subcomentários ainda não são coletados;
-- autenticação/sessão é fornecida externamente;
+- o provider local foi validado sem sessão configurada para os comentários públicos testados; dados protegidos ou mudanças na plataforma podem exigir outra integração;
 - mudanças da plataforma podem exigir adaptação da integração;
 - rate limit atual é local ao processo/cliente;
 - coletas agregadas mantêm limite operacional de posts;
 - a completude depende dos critérios de paginação disponíveis na resposta;
 - grandes coleções ainda são acumuladas em memória durante determinados fluxos.
 
-Esses pontos são tratados como decisões ou fronteiras explícitas, não como comportamento oculto.
-
 ---
 
 ## 29. Compatibilidade futura
 
-A principal característica de compatibilidade do projeto está na separação entre contratos internos e detalhes externos.
-
-Mudanças de:
+Alterações nos seguintes detalhes da integração devem permanecer concentradas em providers e clients:
 
 - autenticação;
 - transporte;
@@ -851,13 +928,7 @@ Mudanças de:
 - campos de protocolo;
 - origem da requisição;
 
-podem ser absorvidas por providers e clients específicos.
-
-Os modelos, parsers e casos de uso não precisam necessariamente conhecer essas alterações.
-
-Da mesma forma, recursos novos, como subcomentários, podem ser acrescentados por composição em vez de alterar toda a cadeia existente.
-
-Essa abordagem reduz o impacto de mudanças e preserva compatibilidade para quem consome os contratos atuais.
+Mudanças nos contratos de saída exigem revisão dos modelos, parsers e consumidores. Recursos novos, como subcomentários, devem ter integração e contrato explícitos.
 
 ---
 
@@ -954,30 +1025,12 @@ README.md
 docs/
 ```
 
-Nenhum segredo, token ou artefato privado deve ser incluído no commit público.
+O commit de entrega deve conter código, testes e documentação, sem exportações de comentários, checkpoints, backups ou credenciais. Entre os artefatos de validação, incluir apenas relatórios estatísticos e fixtures de teste revisadas.
 
 ---
 
 ## 32. Conclusão
 
-O estado atual do Kwai Collector prioriza previsibilidade, separação de responsabilidades e capacidade de evolução.
+A versão atual oferece busca, perfil e coleta de comentários principais, com paginação, controle de frequência, deduplicação e recuperação de progresso. A assinatura local padrão foi validada nas consultas públicas registradas na seção 18.
 
-A aplicação oferece um fluxo consistente para busca, perfil e comentários, com:
-
-- paginação;
-- deduplicação;
-- retry;
-- backoff;
-- rate limit;
-- checkpoint;
-- retomada;
-- validação;
-- tipagem;
-- testes automatizados;
-- configuração desacoplada.
-
-A arquitetura apresenta alta compatibilidade com os fluxos atualmente suportados porque as responsabilidades externas são isoladas atrás de clients e providers.
-
-A coleta atual é intencionalmente focada em comentários principais.
-
-Subcomentários permanecem fora desta versão, mas foram considerados na evolução arquitetural. Uma implementação futura poderá adicioná-los como uma extensão explícita e testável, sem exigir reescrita do fluxo principal nem quebrar o contrato atual.
+O resultado de 8.893 comentários foi concluído após recuperação; o comando de busca inicial falhou. Os relatórios preservam esse histórico e os critérios de validação. Respostas e subcomentários permanecem fora do escopo, e a conclusão da paginação não comprova esgotamento do histórico nem igualdade com contadores públicos.

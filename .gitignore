@@ -122,6 +122,17 @@ dist/
 /experiments/
 /technical_material/
 
+# Saídas locais da CLI; somente os exemplos do repositório são versionados.
+/samples/*
+!/samples/exemplo_busca.json
+!/samples/exemplo_comentarios.json
+!/samples/exemplo_perfil.json
+
+# Material fixo e vetores sintéticos usados pelo assinador local distribuído.
+!/kwai_collector/security/kwai_lite_103_sig3_material.bin
+!/tests/fixtures/native_getclock_vectors.json
+!/tests/fixtures/native_sig3_vectors.json
+
 
 # ============================================================
 # Certificados e chaves locais
