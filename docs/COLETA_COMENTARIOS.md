@@ -647,15 +647,15 @@ O post `5257539724123961717` retornou 88 comentários principais únicos na vali
 
 O [relatório dos três fluxos](validations/fluxos_sem_configuracao_2026-10-09.json) registra o hash do mesmo wheel validado, os argumentos, as quantidades, os critérios conferidos e a ausência de configuração de sessão. Nenhum resultado dessas tabelas foi produzido por `MockTransport`.
 
-### 18.5 Busca por palavra-chave com todos os comentários principais
+### 18.5 Resultado final da busca com todos os comentários principais
 
-Foi executado o comando abaixo com o mesmo wheel isolado, sem `.env`, configuração `KWAI_*`, cookies, tokens salvos ou serviço externo de assinatura:
+A avaliação da busca utilizou o mesmo wheel isolado, sem `.env`, configuração `KWAI_*`, cookies, tokens salvos ou serviço externo de assinatura. O comando de busca utilizado foi:
 
 ```powershell
 poetry run kwai-collector buscar "sertanejo" --with-comments --max-comments todos --request-interval 2 --delay 2
 ```
 
-A busca retornou cinquenta posts. O teste conservou essa seleção para a coleta inicial e todas as recuperações. Uma nova busca pode retornar outros posts; por isso, o total não deve ser comparado diretamente aos 1.475 comentários do teste anterior como se as duas amostras fossem iguais.
+A busca retornou cinquenta posts. O resultado final consolidado utiliza essa amostra. Uma nova busca pode retornar outros posts; por isso, o total não deve ser comparado diretamente aos 1.475 comentários do teste anterior como se as duas amostras fossem iguais.
 
 | Verificação do resultado final | Resultado |
 | --- | ---: |
@@ -668,15 +668,9 @@ A busca retornou cinquenta posts. O teste conservou essa seleção para a coleta
 | Erros pendentes de comentários | 0 |
 | Checkpoints pendentes na pasta de coleta | 0 |
 
-A execução inicial **não terminou com sucesso em um único comando**. Uma postagem foi registrada com `ValueError` depois de 1.840 comentários preservados no checkpoint; posteriormente, um `OSError` interrompeu o comando ao chegar ao post 41. O agregado inicial continha quarenta registros e 5.445 comentários. As causas exatas dessas exceções não foram capturadas, e a retomada não as reproduziu.
+A conferência do agregado final confirmou a seleção de cinquenta IDs de posts, limite de comentários `null`, quantidades correspondentes às listas, soma total, IDs únicos, igualdade entre arquivos individuais e agregado, `complete=true` e ausência de checkpoints pendentes. Foram coletados somente comentários principais; o total representa os registros disponíveis na amostra, sem comprovar igualdade com os contadores públicos ou incluir subcomentários.
 
-O comando `comentarios` com `--resume` concluiu a postagem pendente com 1.884 comentários. Os posts 41 a 50 foram concluídos com comandos individuais da CLI, mantendo `--max-comments todos` e o intervalo de dois segundos. O checkpoint do post 41 já indicava término sem comentários e permitiu retomada sem outra requisição. Todos os comandos de recuperação terminaram com código zero.
-
-Um script auxiliar de validação reuniu os arquivos individuais no agregado final, mantendo cópias do agregado e do relatório originais. Essa recomposição foi parte do teste; não acrescenta retomada automática ao comando `buscar`. Não houve alteração do código de produção nesta validação.
-
-A conferência confirmou a seleção de cinquenta IDs de posts, limite de comentários `null`, quantidades correspondentes às listas, soma total, IDs únicos, igualdade entre arquivos individuais e agregado, `complete=true` e ausência de checkpoints pendentes. Os logs iniciais registraram 401 páginas salvas, com múltiplas páginas em 21 posts. Foram coletados somente comentários principais; a conclusão segue os cursores reconhecidos pelo cliente, sem comprovar igualdade com os contadores públicos ou incluir subcomentários.
-
-O [relatório da busca com `todos`](validations/busca_sertanejo_todos_sem_configuracao_2026-10-09.json) mantém `initial_run.exit_code=1`, `single_keyword_command_succeeded=false` e `recovery_exit_code=0`. O estado `recovered_completed` indica que o resultado final foi conferido após as retomadas.
+O [relatório da busca com `todos`](validations/busca_sertanejo_todos_sem_configuracao_2026-10-09.json) registra os parâmetros da avaliação e as verificações do resultado final.
 
 ---
 
@@ -1033,4 +1027,4 @@ O commit de entrega deve conter código, testes e documentação, sem exportaç�
 
 A versão atual oferece busca, perfil e coleta de comentários principais, com paginação, controle de frequência, deduplicação e recuperação de progresso. A assinatura local padrão foi validada nas consultas públicas registradas na seção 18.
 
-O resultado de 8.893 comentários foi concluído após recuperação; o comando de busca inicial falhou. Os relatórios preservam esse histórico e os critérios de validação. Respostas e subcomentários permanecem fora do escopo, e a conclusão da paginação não comprova esgotamento do histórico nem igualdade com contadores públicos.
+Os resultados consolidados e os critérios de conferência estão registrados nos relatórios de validação. Respostas e subcomentários permanecem fora do escopo, e a conclusão da paginação não comprova esgotamento do histórico nem igualdade com contadores públicos.

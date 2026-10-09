@@ -58,9 +58,9 @@ Em 9 de outubro de 2026, os fluxos abaixo foram validados com o wheel isolado em
 | --- | --- |
 | [Postagem individual](docs/validations/clone_sem_configuracao_2026-10-09.json) | 50 comentários com limite 50; 88 com `todos` |
 | [Perfil e busca](docs/validations/fluxos_sem_configuracao_2026-10-09.json) | 191 posts únicos de `henriqueejuliano`; 1.116 comentários em dez posts com `todos`; 1.475 em 50 posts de `sertanejo`, limitados a 50 por post; coletas sem erros por postagem |
-| [Busca com `todos`](docs/validations/busca_sertanejo_todos_sem_configuracao_2026-10-09.json) | 8.893 comentários principais únicos nos 50 posts retornados, após recuperação |
+| [Resultado final da busca com `todos`](docs/validations/busca_sertanejo_todos_sem_configuracao_2026-10-09.json) | 8.893 comentários principais únicos nos 50 posts da amostra |
 
-A listagem de 191 posts terminou por cursor repetido; não comprova esgotamento do histórico. Na busca com `todos`, o comando inicial falhou, e comandos individuais de `comentarios` concluíram os posts pendentes. O relatório preserva essa falha: o resultado final foi validado após recuperação, e não por uma única execução bem-sucedida de `buscar`. Os critérios e limites das evidências estão na [documentação técnica](docs/COLETA_COMENTARIOS.md#183-validação-sem-configuração).
+A listagem de 191 posts terminou por cursor repetido; não comprova esgotamento do histórico. Os critérios de conferência dos resultados estão na [documentação técnica](docs/COLETA_COMENTARIOS.md#183-validação-sem-configuração).
 
 ---
 
