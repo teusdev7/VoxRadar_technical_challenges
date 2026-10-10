@@ -1,3 +1,5 @@
+"""A1_Radar."""
+
 from pathlib import Path
 from typing import Protocol
 

@@ -1,3 +1,5 @@
+"""A1_Radar."""
+
 from __future__ import annotations
 
 from kwai_collector.security.android_request_profile import (

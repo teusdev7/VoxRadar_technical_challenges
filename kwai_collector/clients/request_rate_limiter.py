@@ -1,4 +1,7 @@
-"""Pace sequential requests and interpret server retry delays."""
+"""Pace sequential requests and interpret server retry delays.
+
+A1_Radar.
+"""
 
 from __future__ import annotations
 

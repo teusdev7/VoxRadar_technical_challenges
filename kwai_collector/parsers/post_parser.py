@@ -1,3 +1,5 @@
+"""A1_Radar."""
+
 from datetime import UTC, datetime
 from typing import Any
 

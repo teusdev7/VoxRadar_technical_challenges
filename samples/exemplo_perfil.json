@@ -1,34 +1,38 @@
-{
-  "perfil": {
-    "usuario": "usuario_exemplo"
-  },
-  "coletado_em": "2026-10-09T15:00:00+00:00",
-  "limite_posts": 10,
-  "total_posts_coletados": 2,
-  "posts": [
-    {
-      "url": "https://www.kwai.com/@usuario_exemplo/video/1234567890",
-      "texto": "Primeira publicação fictícia.",
-      "autor": {
-        "usuario": "usuario_exemplo"
-      },
-      "engajamento": {
-        "curtidas": 1250,
-        "comentarios": 42,
-        "visualizacoes": 18750
-      }
+[
+  {
+    "id": null,
+    "url": "https://www.kwai.com/@usuario_exemplo/video/1234567890",
+    "autor": {
+      "usuario": "usuario_exemplo",
+      "id": null,
+      "url_perfil": null
     },
-    {
-      "url": "https://www.kwai.com/@usuario_exemplo/video/1234567891",
-      "texto": "Segunda publicação fictícia.",
-      "autor": {
-        "usuario": "usuario_exemplo"
-      },
-      "engajamento": {
-        "curtidas": 740,
-        "comentarios": 15,
-        "visualizacoes": 8600
-      }
-    }
-  ]
-}
+    "texto": "Primeira publicação fictícia.",
+    "data_publicacao": null,
+    "engajamento": {
+      "curtidas": 1250,
+      "comentarios": 42,
+      "compartilhamentos": null,
+      "visualizacoes": 18750
+    },
+    "coletado_em": "2026-10-09T15:00:00Z"
+  },
+  {
+    "id": null,
+    "url": "https://www.kwai.com/@usuario_exemplo/video/1234567891",
+    "autor": {
+      "usuario": "usuario_exemplo",
+      "id": null,
+      "url_perfil": null
+    },
+    "texto": "Segunda publicação fictícia.",
+    "data_publicacao": null,
+    "engajamento": {
+      "curtidas": 740,
+      "comentarios": 15,
+      "compartilhamentos": null,
+      "visualizacoes": 8600
+    },
+    "coletado_em": "2026-10-09T15:00:00Z"
+  }
+]

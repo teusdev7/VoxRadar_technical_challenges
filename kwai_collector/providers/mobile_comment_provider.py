@@ -1,6 +1,9 @@
+"""A1_Radar."""
+
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +35,8 @@ from kwai_collector.security.configured_mobile_request_provider import (
 from kwai_collector.security.signature_provider import (
     MobileRequestProvider,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class MobileCommentProvider:
@@ -278,11 +283,10 @@ class MobileCommentProvider:
             raise
 
         if max_comments is not None and len(comentarios_brutos) < max_comments:
-            print(
-                "[!] Aviso: "
-                f"Solicitado {max_comments}, "
-                "obtido "
-                f"{len(comentarios_brutos)}"
+            logger.warning(
+                "Solicitados %d comentários; obtidos %d.",
+                max_comments,
+                len(comentarios_brutos),
             )
 
         return [

@@ -1,4 +1,7 @@
-"""Sign each Kwai Lite 10.3 comment-list request in app order."""
+"""Sign each Kwai Lite 10.3 comment-list request in app order.
+
+A1_Radar.
+"""
 
 from __future__ import annotations
 

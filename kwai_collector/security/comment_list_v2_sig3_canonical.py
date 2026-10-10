@@ -3,6 +3,8 @@
 The installed app's ``cd1/b.a`` sorts query and form pairs together, appends
 a per-call nonce, then passes the text to ``KSecurity.atlasSign``. This module
 prepares that text; it does not implement ``atlasSign``.
+
+A1_Radar.
 """
 
 from __future__ import annotations

@@ -408,16 +408,22 @@ Pacote, versão e User-Agent derivam das constantes do signer; os componentes co
 
 ```json
 {
+  "id": null,
   "url": "https://www.kwai.com/@usuario/video/123",
-  "texto": "Texto da postagem",
   "autor": {
-    "usuario": "usuario"
+    "usuario": "usuario",
+    "id": null,
+    "url_perfil": null
   },
+  "texto": "Texto da postagem",
+  "data_publicacao": null,
   "engajamento": {
     "curtidas": 100,
     "comentarios": 20,
+    "compartilhamentos": null,
     "visualizacoes": 5000
-  }
+  },
+  "coletado_em": "2026-10-09T15:00:00Z"
 }
 ```
 
@@ -469,7 +475,7 @@ Estado validado durante a preparação desta versão:
 ```text
 Ruff: All checks passed
 Mypy: Success: no issues found
-Pytest: 232 passed
+Pytest: 235 passed
 ```
 
 ---

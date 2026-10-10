@@ -1,4 +1,7 @@
-"""Compose the bundled signer without an external signing service."""
+"""Compose the bundled signer without an external signing service.
+
+A1_Radar.
+"""
 
 from __future__ import annotations
 

@@ -4,6 +4,8 @@ The app passes the nonce's signed decimal value into ``KSecurity.atlasSign``.
 After signing, it prepends the same nonce as eight big-endian bytes and
 URL-safe-base64 encodes the result without padding. The native signature
 calculation itself is intentionally outside this module.
+
+A1_Radar.
 """
 
 from __future__ import annotations

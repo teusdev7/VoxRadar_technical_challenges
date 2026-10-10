@@ -1,3 +1,5 @@
+"""A1_Radar."""
+
 from __future__ import annotations
 
 import logging
@@ -136,7 +138,9 @@ class LiveCommentClient:
                 reason = type(exc).__name__
             else:
                 if debug:
-                    print("[DEBUG MOBILE] HTTP status:", response.status_code)
+                    logger.debug(
+                        "HTTP status da API de comentários: %d.", response.status_code
+                    )
                 try:
                     response.raise_for_status()
                 except httpx.HTTPStatusError as exc:
@@ -278,11 +282,10 @@ class LiveCommentClient:
                 len(all_comments),
             )
             if debug:
-                print(
-                    "[DEBUG MOBILE] Página:",
+                logger.debug(
+                    "Página mobile: %d comentários; total único: %d.",
                     len(comments),
-                    "comentários",
-                    f"(total único: {len(all_comments)})",
+                    len(all_comments),
                 )
             if complete:
                 break

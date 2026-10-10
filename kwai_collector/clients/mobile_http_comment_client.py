@@ -1,3 +1,5 @@
+"""A1_Radar."""
+
 import logging
 from typing import Any, Protocol
 

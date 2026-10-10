@@ -1,4 +1,7 @@
-"""Progress that can be saved without storing a signed request or session tokens."""
+"""Progress that can be saved without storing a signed request or session tokens.
+
+A1_Radar.
+"""
 
 from __future__ import annotations
 

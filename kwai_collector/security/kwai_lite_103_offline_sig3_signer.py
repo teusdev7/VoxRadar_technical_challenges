@@ -3,6 +3,8 @@
 The v10 default native route uses HMAC-SHA256, the APK's fixed encryption
 tables, and CRC32. Its 24-byte record includes a process identifier, a call
 counter, and the current time. The request wrapper adds a fresh nonce.
+
+A1_Radar.
 """
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+"""A1_Radar."""
+
 import logging
 from collections.abc import Callable
 from typing import Any

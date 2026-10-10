@@ -785,7 +785,7 @@ Mypy
 Success: no issues found in 59 source files
 
 Pytest
-232 passed
+235 passed
 ```
 
 Comandos utilizados:

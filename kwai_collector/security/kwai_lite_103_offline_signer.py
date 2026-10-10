@@ -3,6 +3,8 @@
 O algoritmo foi conferido com o ``getClock`` do APK ``kwai.lite.video``
 10.3.20.540101 e com vetores sintéticos capturados da função nativa.
 Ele não calcula ``__NS_sig3`` nem campos de sessão.
+
+A1_Radar.
 """
 
 from __future__ import annotations

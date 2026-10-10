@@ -1,4 +1,7 @@
-"""Collect main comments for the posts returned by a keyword search."""
+"""Collect main comments for the posts returned by a keyword search.
+
+A1_Radar.
+"""
 
 from __future__ import annotations
 
